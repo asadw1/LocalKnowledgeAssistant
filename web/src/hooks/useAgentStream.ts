@@ -5,6 +5,7 @@ export type AgentEvent =
   | { type: 'TokenEvent'; Text: string }
   | { type: 'ToolCallEvent'; Tool: string; ArgumentsJson: string }
   | { type: 'ToolResultEvent'; Tool: string; Result: string; IsError: boolean }
+  | { type: 'ErrorEvent'; Message: string }
   | { type: 'DoneEvent' }
 
 /** POSTs a prompt and consumes the SSE response (fetch-based, since EventSource can't POST). */

@@ -21,6 +21,13 @@ public static class ServiceCollectionExtensions
         services.AddOllamaChatCompletion(ollama.Model, new Uri(ollama.BaseUrl));
 #pragma warning restore SKEXP0070
 
+        services.AddOptions<AgentOptions>()
+            .Bind(config.GetSection(AgentOptions.SectionName))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+
+        services.AddKernel();
+
         services.Configure<McpServerOptions>(config.GetSection(McpServerOptions.SectionName));
         services.AddSingleton<McpToolRegistry>();
         services.AddSingleton<IToolRegistry>(sp => sp.GetRequiredService<McpToolRegistry>());

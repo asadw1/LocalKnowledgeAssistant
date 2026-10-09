@@ -13,5 +13,5 @@ public sealed class OllamaOptions
     public string Model { get; init; } = "qwen2.5:7b-instruct";
 
     [Required]
-    public string SystemPrompt { get; init; } = "You are a helpful local assistant. Answer concisely.";
+    public string SystemPrompt { get; init; } = SystemPrompts.Default;
 }

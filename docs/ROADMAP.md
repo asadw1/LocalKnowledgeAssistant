@@ -9,8 +9,8 @@ Delivery plan for the Local Knowledge & File Assistant. Each phase ends in somet
 | 0 | Scaffold and documentation | ✅ |
 | 1 | Streaming chat, no tools | ✅ |
 | 2 | MCP filesystem tools | ✅ |
-| 3 | ReAct loop with validation | 🔜 |
-| 4 | SQLite metadata and indexing | ⬜ |
+| 3 | ReAct loop with validation | ✅ |
+| 4 | SQLite metadata and indexing | 🔜 |
 | 5 | Dashboard UI | ⬜ |
 | 6 | Hardening and evaluation | ⬜ |
 
@@ -59,7 +59,7 @@ Delivery plan for the Local Knowledge & File Assistant. Each phase ends in somet
 
 ---
 
-## Phase 3: ReAct loop with validation 🔜
+## Phase 3: ReAct loop with validation ✅
 
 **Goal:** The model reasons, calls tools, observes results and answers, safely.
 

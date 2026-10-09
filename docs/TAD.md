@@ -55,7 +55,7 @@ Dependency direction: `Api -> Core`; `Tests -> Api, Core`. Core has no ASP.NET d
 ## 5. Components
 
 ### 5.1 Agent runner (`Assistant.Core.Agent`)
-`IAgentRunner.RunAsync(prompt, ct)` returns `IAsyncEnumerable<AgentEvent>`. The API depends only on this interface. The Semantic Kernel implementation *(planned)* owns the kernel, chat history and the ReAct loop.
+`IAgentRunner.RunAsync(prompt, ct)` returns `IAsyncEnumerable<AgentEvent>`. The API depends only on this interface. The Semantic Kernel implementation owns the kernel, chat history and the ReAct loop.
 
 Events:
 
@@ -64,14 +64,15 @@ Events:
 | `TokenEvent(Text)` | Incremental model output |
 | `ToolCallEvent(Tool, ArgumentsJson)` | Model requested a tool |
 | `ToolResultEvent(Tool, Result, IsError)` | Tool output or validation failure |
+| `ErrorEvent(Message)` | Run stopped abnormally (timeout or iteration cap); `DoneEvent` still follows |
 | `DoneEvent` | Run finished |
 
-### 5.2 ReAct loop *(planned)*
+### 5.2 ReAct loop
 1. Append user message to chat history.
 2. Stream a completion with tool calling enabled. Emit `TokenEvent`s.
 3. If the model requests tools: validate each call (section 6), emit `ToolCallEvent`, invoke, emit `ToolResultEvent`, append the result to history, go to 2.
 4. If the model returns a final answer: emit `DoneEvent`.
-5. Hard cap on iterations (default 8) and a per-run timeout, so a looping model cannot run forever.
+5. Guards (`Agent` config section): iteration cap (default 8), per-run timeout (120s), and a limit on identical repeated calls (default 2; further repeats return an error result instead of executing). Tool output over `MaxToolResultChars` is truncated with a marker.
 
 Function invocation is driven manually rather than by Semantic Kernel's auto-invoke, so every call can be validated and surfaced to the UI.
 

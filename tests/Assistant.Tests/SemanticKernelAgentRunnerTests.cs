@@ -1,13 +1,12 @@
 using Assistant.Core.Agent;
 using Assistant.Tests.Fakes;
-using Microsoft.Extensions.Options;
 
 namespace Assistant.Tests;
 
 public class SemanticKernelAgentRunnerTests
 {
     private static SemanticKernelAgentRunner Create(FakeChatCompletionService chat) =>
-        new(chat, Options.Create(new OllamaOptions { SystemPrompt = "sys" }));
+        RunnerFactory.Create(chat, new StubToolRegistry());
 
     [Fact]
     public async Task Streams_tokens_in_order_then_done()
