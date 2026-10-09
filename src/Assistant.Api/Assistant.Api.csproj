@@ -2,6 +2,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Assistant.Core\Assistant.Core.csproj" />
+    <!-- Copied next to the API so it can be launched as a stdio MCP server (see Mcp:Servers). -->
+    <ProjectReference Include="..\Assistant.SqliteMcp\Assistant.SqliteMcp.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

@@ -10,7 +10,7 @@ Delivery plan for the Local Knowledge & File Assistant. Each phase ends in somet
 | 1 | Streaming chat, no tools | ✅ |
 | 2 | MCP filesystem tools | ✅ |
 | 3 | ReAct loop with validation | ✅ |
-| 4 | SQLite metadata and indexing | 🔜 |
+| 4 | SQLite metadata and indexing | 🔜 (4.1–4.3 done) |
 | 5 | Dashboard UI | ⬜ |
 | 6 | Hardening and evaluation | ⬜ |
 
@@ -75,13 +75,13 @@ Delivery plan for the Local Knowledge & File Assistant. Each phase ends in somet
 
 ---
 
-## Phase 4: SQLite metadata and indexing
+## Phase 4: SQLite metadata and indexing 🔜
 
 **Goal:** Answer questions about file metadata and find documents without reading everything.
 
-- **4.1 Schema design:** Tables for files (path, size, modified, hash), tags and summaries; migration script under `data/`.
-- **4.2 Indexer:** Background job that scans the allow-listed root and upserts metadata; incremental via hash and mtime.
-- **4.3 SQLite MCP server:** Configure it against the metadata database in read-only mode.
+- **4.1 Schema design ✅:** Tables for files (path, size, modified, hash), tags and summaries; migration script under `data/`.
+- **4.2 Indexer ✅:** Background job that scans the allow-listed root and upserts metadata; incremental via hash and mtime.
+- **4.3 SQLite MCP server ✅:** Our own `Assistant.SqliteMcp`, because the npm servers surveyed did not guarantee read-only (model-controlled flag or database path, or a broken `npx` entry point). Two tools, `describe_schema` and `query`; database opened read-only with `query_only`, single `SELECT`/`WITH` only, row cap, 5 second timeout.
 - **4.4 Tool selection:** Prompt and tool descriptions that steer the model between filesystem and SQLite tools.
 - **4.5 Combined scenarios:** Queries needing both, such as "which large files changed this week, and what do they contain?"
 - **4.6 Tests:** Indexer on a temp directory; read-only enforcement; scenario tests with the scripted model.

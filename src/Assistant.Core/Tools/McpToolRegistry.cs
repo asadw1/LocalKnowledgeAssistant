@@ -35,7 +35,7 @@ public sealed class McpToolRegistry(IOptions<McpServerOptions> options, ILogger<
                 {
                     Name = server.Name,
                     Command = server.Command,
-                    Arguments = server.Args,
+                    Arguments = server.Args.Select(ExpandTokens).ToList(),
                 });
                 var client = await McpClient.CreateAsync(transport, cancellationToken: timeout.Token);
                 _clients.Add(client);
@@ -51,6 +51,9 @@ public sealed class McpToolRegistry(IOptions<McpServerOptions> options, ILogger<
             }
         }
     }
+
+    /// <summary>Replaces <c>{BaseDirectory}</c> with the app's base directory (ends with a separator).</summary>
+    public static string ExpandTokens(string arg) => arg.Replace("{BaseDirectory}", AppContext.BaseDirectory, StringComparison.Ordinal);
 
     /// <summary>Drops tools named in <paramref name="exclude"/> (case-insensitive).</summary>
     public static IReadOnlyList<McpClientTool> Filter(IEnumerable<McpClientTool> tools, string[]? exclude)

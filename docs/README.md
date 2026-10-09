@@ -37,4 +37,4 @@ cd web && npm run build
 
 ## Status
 
-Streaming chat against Ollama works end to end. MCP wiring, the ReAct loop with tool validation and the full dashboard are not yet implemented; see [ROADMAP.md](ROADMAP.md).
+Working end to end: streaming chat, MCP filesystem tools, the ReAct loop with tool-call validation and loop guards, the SQLite metadata index (rebuilt incrementally in the background) and a read-only SQLite MCP server. Not yet done: prompt and tool steering between filesystem and SQLite tools (Phase 4.4 onward), the full dashboard and the evaluation work; see [ROADMAP.md](ROADMAP.md).

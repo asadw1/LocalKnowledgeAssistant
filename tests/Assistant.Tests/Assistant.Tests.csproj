@@ -22,6 +22,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Assistant.Core\Assistant.Core.csproj" />
     <ProjectReference Include="..\..\src\Assistant.Api\Assistant.Api.csproj" />
+    <ProjectReference Include="..\..\src\Assistant.SqliteMcp\Assistant.SqliteMcp.csproj" />
   </ItemGroup>
 
 </Project>

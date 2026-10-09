@@ -1,7 +1,7 @@
 # Technical Architecture Document
 
 **Project:** Local Knowledge & File Assistant
-**Status:** Draft. Scaffold exists; items marked *(planned)* are design intent, not implemented.
+**Status:** Draft. Implemented through Phase 4.3 (streaming, MCP filesystem tools, ReAct loop with validation, metadata index, read-only SQLite MCP server). Items marked *(planned)* are design intent, not implemented.
 
 ## 1. Purpose and scope
 
@@ -80,18 +80,27 @@ Function invocation is driven manually rather than by Semantic Kernel's auto-inv
 `IToolRegistry.RegisterAsync(kernel)` adds tools to a kernel. Implementations: MCP-backed tools (primary) and optionally native C# tools for testing.
 
 ### 5.4 MCP integration (`Assistant.Core.Mcp`)
-`McpServerOptions` (config section `Mcp`) lists stdio servers as name, command and args. At startup *(planned)* each server is launched via the MCP C# SDK client, its tools are listed, and they are exposed to Semantic Kernel as functions. Initial servers:
+`McpServerOptions` (config section `Mcp`) lists stdio servers as name, command and args. At startup each server is launched via the MCP C# SDK client, its tools are listed, and they are exposed to Semantic Kernel as functions. Initial servers:
 
 - Filesystem MCP server, restricted to an allow-listed root directory.
-- SQLite MCP server, pointed at a metadata database under `data/`.
+- SQLite MCP server (`Assistant.SqliteMcp`, our own), pointed at the metadata database under `data/`. It was written rather than adopted because the available npm servers either let the model switch off read-only mode or choose the database file through tool arguments, or did not start through `npx`. It exposes two tools, `describe_schema` and `query`. The database path is fixed at launch. The guarantee is layered: the file is opened `Mode=ReadOnly` with `PRAGMA query_only`, so SQLite refuses every write; in front of that, only a single `SELECT`/`WITH` statement without comments is accepted; rows are capped and queries are interrupted after 5 seconds.
+
+Server arguments may contain the token `{BaseDirectory}`, expanded to the app's base directory; this is how the API launches `Assistant.SqliteMcp.dll`, which is copied next to it by a project reference. That project targets the ASP.NET shared framework because it is run from the API's output folder, where only that framework supplies hosting.
+
+A server that fails to start is logged and skipped; the app stays up without its tools.
 
 Servers are long-lived child processes owned by a hosted service and disposed on shutdown.
 
-### 5.5 API (`Assistant.Api`)
+### 5.5 Metadata index (`Assistant.Core.Indexing`)
+A SQLite database (`data/assistant.db`) describes the files under the allow-listed root so metadata questions do not need every file read. The schema is `data/migrations/NNN_*.sql`, embedded in the assembly and applied in order by `MetadataDatabase.Migrate()`; the version is stored in SQLite's `user_version`. Tables: `files` (absolute path, name, extension, size, modified time, SHA-256), `tags` and `file_tags`, `summaries` (tied to the file hash they were written for). Tags and summaries are not populated yet.
+
+`FileIndexer` is incremental. A file whose size and modified time are unchanged is not read; one whose time changed is re-hashed and counts as updated only if the hash differs. Rows for deleted files are removed and cascade to tags and summaries. A locked file is skipped and keeps its row. `IndexingService` runs a scan at startup and every `Indexing:IntervalMinutes` (config section `Indexing`: `Enabled`, `Root`, `DatabasePath`, `IntervalMinutes`). The indexer is the only writer, and the database uses WAL so the read-only server can query during a scan. `Indexing:Root` must be kept equal to the filesystem server's allow-listed root by hand.
+
+### 5.6 API (`Assistant.Api`)
 - `GET /api/health`
 - `POST /api/chat` with body `{ "prompt": string }`. Responds `text/event-stream`; each frame is `event: <EventTypeName>` plus `data: <json>`.
 
-### 5.6 Frontend (`web`)
+### 5.7 Frontend (`web`)
 `useAgentStream` posts the prompt with `fetch` and parses the SSE body incrementally (`EventSource` cannot send POST). Vite proxies `/api` to `http://localhost:5080` in development. UI components *(planned)*: message list with streamed text, collapsible tool-call/result cards, error banner.
 
 ## 6. Tool-call validation
