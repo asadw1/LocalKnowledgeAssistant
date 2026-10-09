@@ -9,7 +9,7 @@ public class CompositionTests
     [Fact]
     public async Task Real_container_resolves_the_agent_runner()
     {
-        await using var factory = new WebApplicationFactory<Program>();
+        await using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(b => b.UseSetting("Indexing:Enabled", "false"));
         using var scope = factory.Services.CreateScope();
 
         Assert.IsType<SemanticKernelAgentRunner>(scope.ServiceProvider.GetRequiredService<IAgentRunner>());

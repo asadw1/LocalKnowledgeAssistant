@@ -1,8 +1,10 @@
 using Assistant.Core.Agent;
+using Assistant.Core.Indexing;
 using Assistant.Core.Mcp;
 using Assistant.Core.Tools;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Microsoft.SemanticKernel;
 
 namespace Assistant.Core;
@@ -32,6 +34,14 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<McpToolRegistry>();
         services.AddSingleton<IToolRegistry>(sp => sp.GetRequiredService<McpToolRegistry>());
         services.AddHostedService(sp => sp.GetRequiredService<McpToolRegistry>());
+
+        services.AddOptions<IndexingOptions>()
+            .Bind(config.GetSection(IndexingOptions.SectionName))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+        services.AddSingleton(sp => new MetadataDatabase(sp.GetRequiredService<IOptions<IndexingOptions>>().Value.DatabasePath));
+        services.AddSingleton<FileIndexer>();
+        services.AddHostedService<IndexingService>();
 
         services.AddScoped<IAgentRunner, SemanticKernelAgentRunner>();
         return services;

@@ -21,7 +21,10 @@ public class ChatEndpointTests
     public async Task Chat_streams_sse_frames()
     {
         await using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(b =>
-            b.ConfigureServices(s => s.AddScoped<IAgentRunner, StubRunner>()));
+            {
+                b.UseSetting("Indexing:Enabled", "false");
+                b.ConfigureServices(s => s.AddScoped<IAgentRunner, StubRunner>());
+            });
         using var client = factory.CreateClient();
 
         var res = await client.PostAsJsonAsync("/api/chat", new { prompt = "hi" });
