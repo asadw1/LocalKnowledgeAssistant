@@ -1,4 +1,6 @@
 using Assistant.Core.Agent;
+using Assistant.Core.Mcp;
+using Assistant.Core.Tools;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.SemanticKernel;
@@ -18,6 +20,11 @@ public static class ServiceCollectionExtensions
 #pragma warning disable SKEXP0070 // Ollama connector is prerelease
         services.AddOllamaChatCompletion(ollama.Model, new Uri(ollama.BaseUrl));
 #pragma warning restore SKEXP0070
+
+        services.Configure<McpServerOptions>(config.GetSection(McpServerOptions.SectionName));
+        services.AddSingleton<McpToolRegistry>();
+        services.AddSingleton<IToolRegistry>(sp => sp.GetRequiredService<McpToolRegistry>());
+        services.AddHostedService(sp => sp.GetRequiredService<McpToolRegistry>());
 
         services.AddScoped<IAgentRunner, SemanticKernelAgentRunner>();
         return services;

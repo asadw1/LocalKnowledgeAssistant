@@ -32,6 +32,6 @@ Targets .NET 10 (the installed runtime) rather than .NET 9.
 
 ## Roadmap
 
-Work is planned in seven phases (0–6), each broken into stages: scaffold, streaming chat, MCP filesystem tools, ReAct loop with validation, SQLite metadata, dashboard UI, and hardening. Phases 0 and 1 (streaming chat) are done; Phase 2 (MCP filesystem tools) is next.
+Work is planned in seven phases (0–6), each broken into stages: scaffold, streaming chat, MCP filesystem tools, ReAct loop with validation, SQLite metadata, dashboard UI, and hardening. Phases 0–2 (scaffold, streaming chat, MCP filesystem tools) are done; Phase 3 (ReAct loop with validation) is next.
 
 See the full plan in [docs/ROADMAP.md](docs/ROADMAP.md). Architecture details are in [docs/TAD.md](docs/TAD.md).
