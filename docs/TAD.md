@@ -1,7 +1,7 @@
 # Technical Architecture Document
 
 **Project:** Local Knowledge & File Assistant
-**Status:** Draft. Implemented through Phase 4.3 (streaming, MCP filesystem tools, ReAct loop with validation, metadata index, read-only SQLite MCP server). Items marked *(planned)* are design intent, not implemented.
+**Status:** Draft. Implemented through Phase 4.4 (streaming, MCP filesystem tools, ReAct loop with validation, metadata index, read-only SQLite MCP server, tool selection prompt). Items marked *(planned)* are design intent, not implemented.
 
 ## 1. Purpose and scope
 
@@ -88,6 +88,8 @@ Function invocation is driven manually rather than by Semantic Kernel's auto-inv
 Server arguments may contain the token `{BaseDirectory}`, expanded to the app's base directory; this is how the API launches `Assistant.SqliteMcp.dll`, which is copied next to it by a project reference. That project targets the ASP.NET shared framework because it is run from the API's output folder, where only that framework supplies hosting.
 
 A server that fails to start is logged and skipped; the app stays up without its tools.
+
+**Tool selection.** The model sees seven tools: from the filesystem server, `list_allowed_directories`, `list_directory`, `search_files`, `read_text_file` and `read_multiple_files`; from SQLite, `describe_schema` and `query`. Each server's `ExcludeTools` withholds its write tools and the filesystem tools that duplicate the metadata index (`get_file_info`, `list_directory_with_sizes`, `directory_tree`) or are unhelpful to a text model (`read_file`, a deprecated alias, and `read_media_file`). Fewer, non-overlapping tools make selection easier for a 7B model. The system prompt (`Prompts/system.v2.md`) routes metadata questions to `query`, content questions to the read tools, and combined questions to a query first, whose `path` column is then read as-is. It also summarises the `files` table so the model can query without first calling `describe_schema`. For relative dates it uses `datetime(modified_utc)` against `datetime('now', ...)`, because the indexer's ISO timestamps do not compare correctly as raw text against SQLite's own format. When SQLite is unavailable, or the index lags behind the disk, the prompt falls back to listing and searching. Tests keep the prompt in step with the `files` columns and the excluded tool list.
 
 Servers are long-lived child processes owned by a hosted service and disposed on shutdown.
 

@@ -9,7 +9,7 @@ namespace Assistant.SqliteMcp;
 public sealed class SqliteTools(ReadOnlyQueryEngine engine)
 {
     [McpServerTool(Name = "describe_schema", ReadOnly = true, Destructive = false)]
-    [Description("Describes the file metadata database: each table's CREATE statement (column comments explain the data) and its row count. Call this before writing a query.")]
+    [Description("Describes the file metadata database: each table's CREATE statement (column comments explain the data) and its row count. Call this when you need a table or column you do not know.")]
     public string DescribeSchema()
     {
         try
@@ -23,7 +23,7 @@ public sealed class SqliteTools(ReadOnlyQueryEngine engine)
     }
 
     [McpServerTool(Name = "query", ReadOnly = true, Destructive = false)]
-    [Description("Runs one read-only SQL SELECT (or WITH ... SELECT) against the file metadata database and returns columns and rows as JSON. The database cannot be modified. Results are capped; if truncated is true, narrow the query.")]
+    [Description("Answers questions about the documents as files: which exist, their names, extensions, sizes and modified dates, counts and rankings. Runs one read-only SQL SELECT (or WITH ... SELECT) against the file metadata database and returns columns and rows as JSON. It holds no file contents; read the returned paths with the filesystem tools for that. The database cannot be modified. Results are capped; if truncated is true, narrow the query.")]
     public string Query(
         [Description("A single SQLite SELECT statement. No comments, no semicolon-separated statements.")] string sql,
         [Description("Maximum rows to return (default 100, at most 500).")] int? maxRows = null,

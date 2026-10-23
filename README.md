@@ -26,14 +26,17 @@ Single-agent ReAct loop with tool calling over local MCP servers, running agains
 
 ```
 ollama pull qwen2.5:7b-instruct
+.\scripts\ollama-start.ps1
 dotnet run --project src/Assistant.Api --urls http://localhost:5080
 cd web && npm run dev
 ```
+
+`scripts/ollama-start.ps1` starts `ollama serve` in the background, waits until it answers on `http://127.0.0.1:11434` and warns if the model is not pulled; it does nothing if Ollama is already running. `scripts/ollama-stop.ps1` stops the server, its model runners and the tray app. If script execution is blocked, run them with `powershell -ExecutionPolicy Bypass -File scripts\ollama-start.ps1`.
 
 Targets .NET 10 (the installed runtime) rather than .NET 9.
 
 ## Roadmap
 
-Work is planned in seven phases (0–6), each broken into stages: scaffold, streaming chat, MCP filesystem tools, ReAct loop with validation, SQLite metadata, dashboard UI, and hardening. Phases 0–3 (scaffold, streaming chat, MCP filesystem tools, ReAct loop with validation) are done. Phase 4 (SQLite metadata) is in progress: the schema, the incremental indexer and the read-only SQLite MCP server are built; steering the model between filesystem and SQLite tools (4.4) is next.
+Work is planned in seven phases (0–6), each broken into stages: scaffold, streaming chat, MCP filesystem tools, ReAct loop with validation, SQLite metadata, dashboard UI, and hardening. Phases 0–3 (scaffold, streaming chat, MCP filesystem tools, ReAct loop with validation) are done. Phase 4 (SQLite metadata) is in progress: the schema, the incremental indexer, the read-only SQLite MCP server and tool selection between filesystem and SQLite are built; combined scenarios (4.5) are next.
 
 See the full plan in [docs/ROADMAP.md](docs/ROADMAP.md). Architecture details are in [docs/TAD.md](docs/TAD.md).

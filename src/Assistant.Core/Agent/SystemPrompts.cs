@@ -5,7 +5,7 @@ namespace Assistant.Core.Agent;
 /// <summary>Versioned system prompts shipped as embedded resources under <c>Prompts/</c>.</summary>
 public static class SystemPrompts
 {
-    public const string CurrentVersion = "v1";
+    public const string CurrentVersion = "v2";
 
     public static string Default { get; } = Load(CurrentVersion);
 
