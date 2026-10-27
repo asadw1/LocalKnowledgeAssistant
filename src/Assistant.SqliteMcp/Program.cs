@@ -11,7 +11,10 @@ internal static class SqliteMcpEntryPoint
     /// Read-only SQLite MCP server over stdio. The database path is fixed here, at launch, and is never a tool argument.
     /// Usage: Assistant.SqliteMcp &lt;path-to-database&gt;
     /// </summary>
-    private static async Task<int> Main(string[] args)
+    private static Task<int> Main(string[] args) => RunAsync(args);
+
+    /// <summary>The server's real body; <paramref name="ct"/> lets tests stop the host that <c>Main</c> would run until killed.</summary>
+    internal static async Task<int> RunAsync(string[] args, CancellationToken ct = default)
     {
         if (args.Length != 1 || string.IsNullOrWhiteSpace(args[0]))
         {
@@ -30,7 +33,7 @@ internal static class SqliteMcpEntryPoint
             .WithStdioServerTransport()
             .WithTools<SqliteTools>();
 
-        await builder.Build().RunAsync();
+        await builder.Build().RunAsync(ct);
         return 0;
     }
 }

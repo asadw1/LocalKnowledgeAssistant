@@ -9,7 +9,8 @@ public sealed class IndexingService(
     MetadataDatabase database,
     FileIndexer indexer,
     IOptions<IndexingOptions> options,
-    ILogger<IndexingService> logger) : BackgroundService
+    ILogger<IndexingService> logger,
+    TimeProvider? time = null) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -30,7 +31,8 @@ public sealed class IndexingService(
             return;
         }
 
-        do
+        // Task.Delay throws once the token is cancelled, so the loop only ends through the returns below.
+        while (true)
         {
             try
             {
@@ -47,7 +49,7 @@ public sealed class IndexingService(
             }
 
             if (o.IntervalMinutes == 0) return;
-            await Task.Delay(TimeSpan.FromMinutes(o.IntervalMinutes), stoppingToken);
-        } while (!stoppingToken.IsCancellationRequested);
+            await Task.Delay(TimeSpan.FromMinutes(o.IntervalMinutes), time ?? TimeProvider.System, stoppingToken);
+        }
     }
 }
