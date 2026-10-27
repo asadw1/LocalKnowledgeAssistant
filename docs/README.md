@@ -11,6 +11,7 @@ Documentation for the Local Knowledge & File Assistant.
 | [DATA-SPEC.md](DATA-SPEC.md) | Metadata schema, migrations, incremental indexing, scheduling, retention |
 | [API-CONTRACT.md](API-CONTRACT.md) | HTTP endpoints, SSE event schemas, client behaviour, error cases |
 | [SECURITY.md](SECURITY.md) | Threat model, read-only controls by boundary, prompt-injection posture, change checklist |
+| [RUNBOOK.md](RUNBOOK.md) | Starting and stopping, live verification, process cleanup, log reading, troubleshooting |
 
 ## Project summary
 
