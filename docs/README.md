@@ -43,4 +43,4 @@ cd web && npm run build
 
 ## Status
 
-Working end to end: streaming chat, MCP filesystem tools, the ReAct loop with tool-call validation and loop guards, the SQLite metadata index (rebuilt incrementally in the background) and a read-only SQLite MCP server. Not yet done: prompt and tool steering between filesystem and SQLite tools (Phase 4.4 onward), the full dashboard and the evaluation work; see [ROADMAP.md](ROADMAP.md).
+Working end to end: streaming chat, MCP filesystem tools, the ReAct loop with tool-call validation and loop guards, the SQLite metadata index (rebuilt incrementally in the background) and a read-only SQLite MCP server. Phase 4 is complete (tool selection between filesystem and SQLite, combined-scenario tests). Not yet done: the full dashboard and the evaluation work; see [ROADMAP.md](ROADMAP.md).

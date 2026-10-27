@@ -10,7 +10,7 @@ Delivery plan for the Local Knowledge & File Assistant. Each phase ends in somet
 | 1 | Streaming chat, no tools | Done |
 | 2 | MCP filesystem tools | Done |
 | 3 | ReAct loop with validation | Done |
-| 4 | SQLite metadata and indexing | In progress (4.1-4.4 done) |
+| 4 | SQLite metadata and indexing | Done |
 | 5 | Dashboard UI | Not started |
 | 6 | Hardening and evaluation | Not started |
 
@@ -75,16 +75,16 @@ Delivery plan for the Local Knowledge & File Assistant. Each phase ends in somet
 
 ---
 
-## Phase 4: SQLite metadata and indexing (in progress)
+## Phase 4: SQLite metadata and indexing (done)
 
 **Goal:** Answer questions about file metadata and find documents without reading everything.
 
 - **4.1 Schema design (done):** Tables for files (path, size, modified, hash), tags and summaries; migration script under `data/`.
 - **4.2 Indexer (done):** Background job that scans the allow-listed root and upserts metadata; incremental via hash and mtime.
 - **4.3 SQLite MCP server (done):** Our own `Assistant.SqliteMcp`, because the npm servers surveyed did not guarantee read-only (model-controlled flag or database path, or a broken `npx` entry point). Two tools, `describe_schema` and `query`; database opened read-only with `query_only`, single `SELECT`/`WITH` only, row cap, 5 second timeout.
-- **4.4 Tool selection (done):** System prompt v2 routes metadata questions to SQLite, content questions to the filesystem, and combined ones query-then-read; it summarises the `files` table and gives a date idiom that works with the indexer's timestamps. Overlapping filesystem tools are withheld, leaving seven tools. Drift tests tie the prompt to the schema and tool config.
-- **4.5 Combined scenarios:** Queries needing both, such as "which large files changed this week, and what do they contain?"
-- **4.6 Tests:** Indexer on a temp directory; read-only enforcement; scenario tests with the scripted model.
+- **4.4 Tool selection (done):** System prompt v2 routed metadata questions to SQLite, content questions to the filesystem, and combined ones query-then-read; it summarises the `files` table and gives a date idiom that works with the indexer's timestamps. Overlapping filesystem tools were withheld, leaving seven tools (six after 4.5). Drift tests tie the prompt to the schema and tool config.
+- **4.5 Combined scenarios (done):** Queries needing both, such as "which large files changed this week, and what do they contain?". Run against the real model: with the multi-file read exposed, 5 of 6 runs hit the iteration cap because the model passed `paths` as a string. `read_multiple_files` is now withheld and prompt v3 reads one file per call; the same prompts then all finished. Remaining model limits (empty first arguments, announcing a step without calling the tool) are in PROMPT-SPEC section 7.
+- **4.6 Tests (done):** Indexer on a temp directory; read-only enforcement; `CombinedScenarioTests` drive a scripted model over a real index and the real SQLite server (query, then read the returned `path` unchanged; rejected query then correction; write attempts fail and the index is unchanged).
 
 **Exit criteria:** Metadata questions are answered from SQLite; content questions use the filesystem; the database cannot be modified through the agent.
 
