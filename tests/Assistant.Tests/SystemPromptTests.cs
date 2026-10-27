@@ -59,6 +59,21 @@ public sealed class SystemPromptTests : IDisposable
     }
 
     [Fact]
+    public async Task Multi_file_read_stays_withheld_because_the_model_passes_its_paths_as_a_string()
+    {
+        // Live runs against qwen2.5:7b-instruct: read_multiple_files was called with "paths" as JSON text instead of
+        // an array in every run, five times in a row, until the iteration cap. One read_text_file per file works.
+        await using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(b => b.UseSetting("Indexing:Enabled", "false"));
+        var servers = factory.Services.GetRequiredService<IOptions<McpServerOptions>>().Value.Servers;
+
+        var filesystem = Assert.Single(servers, s => s.Name == "filesystem");
+
+        Assert.Contains("read_multiple_files", filesystem.ExcludeTools!);
+        Assert.DoesNotContain("read_multiple_files", SystemPrompts.Default);
+        Assert.Contains("read_text_file", SystemPrompts.Default);
+    }
+
+    [Fact]
     public void Recommended_date_comparison_handles_indexer_timestamps_where_raw_text_comparison_does_not()
     {
         Directory.CreateDirectory(_dir);
