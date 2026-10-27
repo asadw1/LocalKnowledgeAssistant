@@ -7,6 +7,7 @@ Documentation for the Local Knowledge & File Assistant.
 | [TAD.md](TAD.md) | Technical Architecture Document: components, runtime flow, contracts, decisions, risks |
 | [ROADMAP.md](ROADMAP.md) | Phased delivery plan with stages and exit criteria |
 | [PROMPT-SPEC.md](PROMPT-SPEC.md) | Model settings, system prompt versioning and structure, tool exposure, token budget |
+| [MCP-SPEC.md](MCP-SPEC.md) | MCP server configuration, process lifecycle, tool-call validation contract, SqliteMcp tools |
 
 ## Project summary
 
