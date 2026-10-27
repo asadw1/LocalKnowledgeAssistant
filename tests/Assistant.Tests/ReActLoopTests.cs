@@ -167,4 +167,42 @@ public class ReActLoopTests
                 cts.Cancel();
         });
     }
+
+    [Fact]
+    public async Task Tool_name_without_a_plugin_prefix_is_reported_under_its_plain_name()
+    {
+        var events = await Run(new ScriptedChatCompletionService(Call("nope", "{}"), Say("ok")));
+
+        Assert.Equal("nope", events.OfType<ToolCallEvent>().Single().Tool);
+        Assert.Contains("Unknown tool 'nope'", events.OfType<ToolResultEvent>().Single().Result);
+    }
+
+    private sealed class CancellingToolRegistry(CancellationTokenSource cts) : Assistant.Core.Tools.IToolRegistry
+    {
+        public Task RegisterAsync(Kernel kernel, CancellationToken ct = default)
+        {
+            kernel.Plugins.AddFromFunctions("tools",
+            [
+                KernelFunctionFactory.CreateFromMethod(new Func<CancellationToken, string>(token =>
+                {
+                    cts.Cancel(); // the client goes away while the tool is running
+                    token.ThrowIfCancellationRequested();
+                    return "unreachable";
+                }), "slow", "Runs until the client disconnects"),
+            ]);
+            return Task.CompletedTask;
+        }
+    }
+
+    [Fact]
+    public async Task Client_disconnecting_during_a_tool_call_cancels_the_run_instead_of_becoming_a_tool_error()
+    {
+        using var cts = new CancellationTokenSource();
+        var runner = RunnerFactory.Create(new ScriptedChatCompletionService(Call("tools-slow", "{}"), Say("never")), new CancellingToolRegistry(cts));
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
+        {
+            await foreach (var _ in runner.RunAsync("q", cts.Token)) { }
+        });
+    }
 }

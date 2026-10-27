@@ -204,4 +204,47 @@ public sealed class ReadOnlyQueryEngineTests : IDisposable
         Assert.Equal("<blob 4 bytes>", r.Rows[0][0]);
         Assert.Null(r.Rows[0][1]);
     }
+
+    [Fact]
+    public void Database_that_cannot_be_opened_gives_a_model_readable_message()
+    {
+        if (!OperatingSystem.IsWindows()) return; // relies on Windows mandatory file locking
+        SqliteConnection.ClearAllPools(); // seeding leaves pooled handles on the file
+        using var hold = new FileStream(_dbPath, FileMode.Open, FileAccess.Read, FileShare.None);
+
+        var ex = Assert.Throws<QueryRejectedException>(() => _engine.Execute("SELECT 1"));
+
+        Assert.Contains("Could not open the metadata database read-only", ex.Message);
+    }
+
+    [Fact]
+    public void Null_sql_is_treated_as_empty() =>
+        Assert.Contains("empty", Assert.Throws<QueryRejectedException>(() => ReadOnlyQueryEngine.Validate(null!, 100)).Message);
+
+    [Fact]
+    public void Sql_longer_than_the_limit_is_rejected()
+    {
+        var ex = Assert.Throws<QueryRejectedException>(() => ReadOnlyQueryEngine.Validate("SELECT 1234567", 10));
+
+        Assert.Contains("longer than 10 characters", ex.Message);
+    }
+
+    [Fact]
+    public void Bracket_quoted_identifiers_may_contain_semicolons_and_comment_markers()
+    {
+        Assert.Equal("SELECT 1 AS [a;b -- c]", ReadOnlyQueryEngine.Validate("SELECT 1 AS [a;b -- c];", 100));
+        Assert.Equal(3L, _engine.Execute("SELECT count(*) AS [n] FROM files").Rows[0][0]);
+    }
+
+    [Fact]
+    public void Unterminated_bracket_is_rejected() =>
+        Assert.Contains("Unterminated", Assert.Throws<QueryRejectedException>(() => ReadOnlyQueryEngine.Validate("SELECT [name FROM files", 100)).Message);
+
+    [Theory]
+    [InlineData("SELECT 5 - 3")]
+    [InlineData("SELECT 6 / 3")]
+    [InlineData("SELECT 5 -")]
+    [InlineData("SELECT 6 /")]
+    public void Lone_minus_or_slash_is_not_mistaken_for_a_comment(string sql) =>
+        Assert.Equal(sql, ReadOnlyQueryEngine.Validate(sql, 100));
 }
