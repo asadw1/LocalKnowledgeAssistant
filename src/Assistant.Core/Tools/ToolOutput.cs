@@ -19,7 +19,7 @@ public static class ToolOutput
             var text = new StringBuilder();
             foreach (var item in content.EnumerateArray())
             {
-                if (item.TryGetProperty("text", out var t) && t.ValueKind == JsonValueKind.String)
+                if (item.ValueKind == JsonValueKind.Object && item.TryGetProperty("text", out var t) && t.ValueKind == JsonValueKind.String)
                 {
                     if (text.Length > 0) text.Append('\n');
                     text.Append(t.GetString());
