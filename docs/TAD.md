@@ -13,16 +13,12 @@ Build a single-agent assistant that reasons over a user's local documents and me
 
 ## 2. Context
 
-```
-[React Dashboard] <--- SSE ---> [ASP.NET Core Minimal API]
-                                          |
-                                [Semantic Kernel engine]
-                                          |
-                       +------------------+------------------+
-                       |                                     |
-            [Ollama / qwen2.5:7b-instruct]        [Local MCP servers (stdio)]
-                                                   - Filesystem
-                                                   - SQLite
+```mermaid
+flowchart TD
+    UI["React Dashboard"] <-->|SSE| API["ASP.NET Core Minimal API"]
+    API --> SK["Semantic Kernel engine"]
+    SK --> LLM["Ollama / qwen2.5:7b-instruct"]
+    SK --> MCP["Local MCP servers (stdio)<br/>- Filesystem<br/>- SQLite"]
 ```
 
 Everything runs on one developer machine. The only network traffic is loopback.

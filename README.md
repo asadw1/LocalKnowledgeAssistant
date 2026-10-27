@@ -2,13 +2,12 @@
 
 Single-agent ReAct loop with tool calling over local MCP servers, running against a local Ollama model.
 
-```
-[React Dashboard] <-- SSE --> [ASP.NET Core Minimal API]
-                                        |
-                              [Semantic Kernel Engine]
-                                        |
-                       +----------------+----------------+
-                [Ollama / qwen2.5:7b-instruct]   [Local MCP servers: filesystem, SQLite]
+```mermaid
+flowchart TD
+    UI["React Dashboard"] <-->|SSE| API["ASP.NET Core Minimal API"]
+    API --> SK["Semantic Kernel Engine"]
+    SK --> LLM["Ollama / qwen2.5:7b-instruct"]
+    SK --> MCP["Local MCP servers: filesystem, SQLite"]
 ```
 
 ## Layout
