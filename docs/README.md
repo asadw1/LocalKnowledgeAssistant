@@ -10,6 +10,7 @@ Documentation for the Local Knowledge & File Assistant.
 | [MCP-SPEC.md](MCP-SPEC.md) | MCP server configuration, process lifecycle, tool-call validation contract, SqliteMcp tools |
 | [DATA-SPEC.md](DATA-SPEC.md) | Metadata schema, migrations, incremental indexing, scheduling, retention |
 | [API-CONTRACT.md](API-CONTRACT.md) | HTTP endpoints, SSE event schemas, client behaviour, error cases |
+| [SECURITY.md](SECURITY.md) | Threat model, read-only controls by boundary, prompt-injection posture, change checklist |
 
 ## Project summary
 
