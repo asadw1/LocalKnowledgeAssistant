@@ -8,6 +8,7 @@ Documentation for the Local Knowledge & File Assistant.
 | [ROADMAP.md](ROADMAP.md) | Phased delivery plan with stages and exit criteria |
 | [PROMPT-SPEC.md](PROMPT-SPEC.md) | Model settings, system prompt versioning and structure, tool exposure, token budget |
 | [MCP-SPEC.md](MCP-SPEC.md) | MCP server configuration, process lifecycle, tool-call validation contract, SqliteMcp tools |
+| [DATA-SPEC.md](DATA-SPEC.md) | Metadata schema, migrations, incremental indexing, scheduling, retention |
 
 ## Project summary
 
