@@ -20,6 +20,7 @@ flowchart TD
 | `data/` | SQL migrations (`data/migrations`) and the generated metadata database (git-ignored) |
 | `tests/Assistant.Tests` | xUnit tests (agent loop, tool validation, indexer, read-only SQL server) |
 | `web` | React + TypeScript + Vite + Tailwind v4 dashboard |
+| `docs/` | Architecture (TAD), roadmap, and specs for prompts, MCP, data, API, security and operations; see [docs/README.md](docs/README.md) |
 
 ## Run
 
