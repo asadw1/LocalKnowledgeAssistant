@@ -2,21 +2,21 @@
 
 Delivery plan for the Local Knowledge & File Assistant. Each phase ends in something runnable; each stage is a small, reviewable unit of work. Design details live in [TAD.md](TAD.md).
 
-**Status key:** ✅ done · 🔜 next · ⬜ not started
+**Status key:** Done, In progress, Not started
 
 | Phase | Goal | Status |
 |---|---|---|
-| 0 | Scaffold and documentation | ✅ |
-| 1 | Streaming chat, no tools | ✅ |
-| 2 | MCP filesystem tools | ✅ |
-| 3 | ReAct loop with validation | ✅ |
-| 4 | SQLite metadata and indexing | 🔜 (4.1–4.4 done) |
-| 5 | Dashboard UI | ⬜ |
-| 6 | Hardening and evaluation | ⬜ |
+| 0 | Scaffold and documentation | Done |
+| 1 | Streaming chat, no tools | Done |
+| 2 | MCP filesystem tools | Done |
+| 3 | ReAct loop with validation | Done |
+| 4 | SQLite metadata and indexing | In progress (4.1-4.4 done) |
+| 5 | Dashboard UI | Not started |
+| 6 | Hardening and evaluation | Not started |
 
 ---
 
-## Phase 0: Scaffold and documentation ✅
+## Phase 0: Scaffold and documentation (done)
 
 **Goal:** A building solution and frontend, with the architecture written down.
 
@@ -29,7 +29,7 @@ Delivery plan for the Local Knowledge & File Assistant. Each phase ends in somet
 
 ---
 
-## Phase 1: Streaming chat, no tools ✅
+## Phase 1: Streaming chat, no tools (done)
 
 **Goal:** Type a prompt in the browser and watch tokens stream from the local model.
 
@@ -44,7 +44,7 @@ Delivery plan for the Local Knowledge & File Assistant. Each phase ends in somet
 
 ---
 
-## Phase 2: MCP filesystem tools ✅
+## Phase 2: MCP filesystem tools (done)
 
 **Goal:** The app can launch a local MCP server and expose its tools to the kernel.
 
@@ -59,7 +59,7 @@ Delivery plan for the Local Knowledge & File Assistant. Each phase ends in somet
 
 ---
 
-## Phase 3: ReAct loop with validation ✅
+## Phase 3: ReAct loop with validation (done)
 
 **Goal:** The model reasons, calls tools, observes results and answers, safely.
 
@@ -75,14 +75,14 @@ Delivery plan for the Local Knowledge & File Assistant. Each phase ends in somet
 
 ---
 
-## Phase 4: SQLite metadata and indexing 🔜
+## Phase 4: SQLite metadata and indexing (in progress)
 
 **Goal:** Answer questions about file metadata and find documents without reading everything.
 
-- **4.1 Schema design ✅:** Tables for files (path, size, modified, hash), tags and summaries; migration script under `data/`.
-- **4.2 Indexer ✅:** Background job that scans the allow-listed root and upserts metadata; incremental via hash and mtime.
-- **4.3 SQLite MCP server ✅:** Our own `Assistant.SqliteMcp`, because the npm servers surveyed did not guarantee read-only (model-controlled flag or database path, or a broken `npx` entry point). Two tools, `describe_schema` and `query`; database opened read-only with `query_only`, single `SELECT`/`WITH` only, row cap, 5 second timeout.
-- **4.4 Tool selection ✅:** System prompt v2 routes metadata questions to SQLite, content questions to the filesystem, and combined ones query-then-read; it summarises the `files` table and gives a date idiom that works with the indexer's timestamps. Overlapping filesystem tools are withheld, leaving seven tools. Drift tests tie the prompt to the schema and tool config.
+- **4.1 Schema design (done):** Tables for files (path, size, modified, hash), tags and summaries; migration script under `data/`.
+- **4.2 Indexer (done):** Background job that scans the allow-listed root and upserts metadata; incremental via hash and mtime.
+- **4.3 SQLite MCP server (done):** Our own `Assistant.SqliteMcp`, because the npm servers surveyed did not guarantee read-only (model-controlled flag or database path, or a broken `npx` entry point). Two tools, `describe_schema` and `query`; database opened read-only with `query_only`, single `SELECT`/`WITH` only, row cap, 5 second timeout.
+- **4.4 Tool selection (done):** System prompt v2 routes metadata questions to SQLite, content questions to the filesystem, and combined ones query-then-read; it summarises the `files` table and gives a date idiom that works with the indexer's timestamps. Overlapping filesystem tools are withheld, leaving seven tools. Drift tests tie the prompt to the schema and tool config.
 - **4.5 Combined scenarios:** Queries needing both, such as "which large files changed this week, and what do they contain?"
 - **4.6 Tests:** Indexer on a temp directory; read-only enforcement; scenario tests with the scripted model.
 
