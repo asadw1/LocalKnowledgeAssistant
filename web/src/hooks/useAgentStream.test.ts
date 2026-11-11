@@ -52,6 +52,35 @@ describe('useAgentStream', () => {
     expect(result.current.error).toBeNull()
   })
 
+  it('collects the run id event like any other typed event', async () => {
+    mockFetch(async () => streamOf(frame('RunStartedEvent', { RunId: 'abc123def456' }), frame('DoneEvent', {})))
+    const { result } = renderHook(() => useAgentStream())
+
+    await act(() => result.current.send('q'))
+
+    expect(result.current.events[0]).toEqual({ type: 'RunStartedEvent', RunId: 'abc123def456' })
+  })
+
+  it('flags a stream that ends without a DoneEvent', async () => {
+    mockFetch(async () => streamOf(frame('TokenEvent', { Text: 'partial' })))
+    const { result } = renderHook(() => useAgentStream())
+
+    await act(() => result.current.send('q'))
+
+    expect(result.current.error).toBe('The connection closed before the run finished.')
+    expect(result.current.events).toEqual([{ type: 'TokenEvent', Text: 'partial' }])
+    expect(result.current.running).toBe(false)
+  })
+
+  it('does not flag a stream that ends with an ErrorEvent and a DoneEvent', async () => {
+    mockFetch(async () => streamOf(frame('ErrorEvent', { Message: 'boom' }), frame('DoneEvent', {})))
+    const { result } = renderHook(() => useAgentStream())
+
+    await act(() => result.current.send('q'))
+
+    expect(result.current.error).toBeNull()
+  })
+
   it('reassembles a frame that arrives split across chunks', async () => {
     mockFetch(async () => streamOf('event: TokenEvent\nda', 'ta: {"Text":', '"split"}\n\n'))
     const { result } = renderHook(() => useAgentStream())
@@ -82,10 +111,10 @@ describe('useAgentStream', () => {
   })
 
   it('clears the previous run before starting a new one', async () => {
-    mockFetch(async () => streamOf(frame('TokenEvent', { Text: 'one' })))
+    mockFetch(async () => streamOf(frame('TokenEvent', { Text: 'one' }), frame('DoneEvent', {})))
     const { result } = renderHook(() => useAgentStream())
     await act(() => result.current.send('first'))
-    expect(result.current.events).toHaveLength(1)
+    expect(result.current.events).toHaveLength(2)
 
     mockFetch(async () => {
       throw new Error('second failed')
@@ -95,11 +124,11 @@ describe('useAgentStream', () => {
     expect(result.current.events).toEqual([])
     expect(result.current.error).toBe('second failed')
 
-    mockFetch(async () => streamOf(frame('TokenEvent', { Text: 'three' })))
+    mockFetch(async () => streamOf(frame('TokenEvent', { Text: 'three' }), frame('DoneEvent', {})))
     await act(() => result.current.send('third'))
 
     expect(result.current.error).toBeNull()
-    expect(result.current.events).toEqual([{ type: 'TokenEvent', Text: 'three' }])
+    expect(result.current.events).toEqual([{ type: 'TokenEvent', Text: 'three' }, { type: 'DoneEvent' }])
   })
 
   it('reports a failed HTTP status', async () => {

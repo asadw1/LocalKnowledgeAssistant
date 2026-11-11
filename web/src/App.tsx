@@ -6,6 +6,9 @@ export default function App() {
   const { events, running, error, send, stop } = useAgentStream()
 
   const answer = events.map(e => (e.type === 'TokenEvent' ? e.Text : '')).join('')
+  const runId = events.flatMap(e => (e.type === 'RunStartedEvent' ? [e.RunId] : []))[0]
+  // Run errors arrive in the stream (ErrorEvent); `error` covers transport failures. The run id lets a report be matched to the server log.
+  const alerts = [...events.flatMap(e => (e.type === 'ErrorEvent' ? [e.Message] : [])), ...(error ? [error] : [])]
 
   function submit(e: FormEvent) {
     e.preventDefault()
@@ -21,7 +24,11 @@ export default function App() {
         {answer || (running ? '…' : <span className="text-slate-400">Ask something to get started.</span>)}
       </section>
 
-      {error && <p role="alert" className="rounded bg-red-50 p-3 text-red-700">{error}</p>}
+      {runId && <p className="text-xs text-slate-500">Run {runId}</p>}
+
+      {alerts.map((message, i) => (
+        <p key={i} role="alert" className="rounded bg-red-50 p-3 text-red-700">{message}</p>
+      ))}
 
       <form onSubmit={submit} className="flex gap-2">
         <input

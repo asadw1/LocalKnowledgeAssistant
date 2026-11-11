@@ -109,6 +109,50 @@ describe('App', () => {
     expect(screen.queryByText('Ask something to get started.')).not.toBeInTheDocument()
   })
 
+  it('shows a run error from the stream as an alert and keeps the partial answer and run id visible', () => {
+    hook.state = {
+      events: [
+        { type: 'RunStartedEvent', RunId: 'abc123def456' },
+        { type: 'TokenEvent', Text: 'Partial answer' },
+        { type: 'ErrorEvent', Message: 'Could not reach the model server.' },
+        { type: 'DoneEvent' },
+      ],
+      running: false,
+      error: null,
+    }
+    render(<App />)
+
+    expect(screen.getByRole('alert')).toHaveTextContent('Could not reach the model server.')
+    expect(screen.getByText('Run abc123def456')).toBeInTheDocument()
+    expect(screen.getByText('Partial answer')).toBeInTheDocument()
+  })
+
+  it('shows the run id under the answer once the run has started', () => {
+    hook.state = { events: [{ type: 'RunStartedEvent', RunId: 'abc123def456' }, { type: 'TokenEvent', Text: 'Hi' }], running: true, error: null }
+    render(<App />)
+
+    expect(screen.getByText('Run abc123def456')).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('shows every error and the transport error as separate alerts', () => {
+    hook.state = {
+      events: [
+        { type: 'ErrorEvent', Message: 'first' },
+        { type: 'ErrorEvent', Message: 'second' },
+      ],
+      running: false,
+      error: 'The connection closed before the run finished.',
+    }
+    render(<App />)
+
+    expect(screen.getAllByRole('alert').map(a => a.textContent)).toEqual([
+      'first',
+      'second',
+      'The connection closed before the run finished.',
+    ])
+  })
+
   it('shows an error as an alert', () => {
     hook.state = { events: [], running: false, error: 'Request failed (500)' }
     render(<App />)
