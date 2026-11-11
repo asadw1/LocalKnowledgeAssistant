@@ -1,5 +1,6 @@
 using Assistant.Core.Agent;
 using Assistant.Tests.Fakes;
+using Microsoft.Extensions.Logging;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
 using static Assistant.Tests.Fakes.ScriptedChatCompletionService;
@@ -153,6 +154,70 @@ public class ReActLoopTests
                 yield return new StreamingChatMessageContent(AuthorRole.Assistant, ".");
             }
         }
+    }
+
+    private static IEnumerable<StreamingChatMessageContent> Throw(Exception ex, string? tokenFirst = null)
+    {
+        if (tokenFirst is not null) yield return new StreamingChatMessageContent(AuthorRole.Assistant, tokenFirst);
+        throw ex;
+    }
+
+    [Fact]
+    public async Task Unreachable_model_server_emits_error_then_done_instead_of_throwing()
+    {
+        var model = new ScriptedChatCompletionService(() => Throw(new HttpRequestException("Connection refused (127.0.0.1:11434)")));
+
+        var events = await Run(model);
+
+        Assert.Equal(["ErrorEvent", "DoneEvent"], events.Select(e => e.GetType().Name));
+        Assert.Contains("Ollama", events.OfType<ErrorEvent>().Single().Message);
+    }
+
+    [Fact]
+    public async Task Http_client_timeout_is_reported_as_a_failure_not_a_cancellation()
+    {
+        var model = new ScriptedChatCompletionService(() => Throw(new TaskCanceledException("The request was canceled due to the configured HttpClient.Timeout")));
+
+        var events = await Run(model);
+
+        Assert.Equal(["ErrorEvent", "DoneEvent"], events.Select(e => e.GetType().Name));
+    }
+
+    [Fact]
+    public async Task Failure_after_some_tokens_keeps_them_and_then_reports_error_and_done()
+    {
+        var model = new ScriptedChatCompletionService(() => Throw(new InvalidOperationException("boom-secret-detail"), tokenFirst: "Part"));
+
+        var events = await Run(model);
+
+        Assert.Equal(["TokenEvent", "ErrorEvent", "DoneEvent"], events.Select(e => e.GetType().Name));
+        Assert.DoesNotContain("boom-secret-detail", events.OfType<ErrorEvent>().Single().Message);
+        Assert.Contains("server log", events.OfType<ErrorEvent>().Single().Message);
+    }
+
+    [Fact]
+    public async Task Unexpected_failure_is_logged_with_its_exception_type()
+    {
+        var logger = new CapturingLogger<SemanticKernelAgentRunner>();
+        var model = new ScriptedChatCompletionService(() => Throw(new InvalidOperationException("boom-secret-detail")));
+
+        await RunnerFactory.Create(model, new StubToolRegistry(), logger: logger).RunAsync("q").ToListAsync();
+
+        Assert.Contains(logger.Entries, e => e.Level == LogLevel.Error);
+    }
+
+    [Fact]
+    public async Task Tool_registration_failure_emits_error_then_done()
+    {
+        var events = await RunnerFactory.Create(new ScriptedChatCompletionService(Say("x")), new ThrowingToolRegistry())
+            .RunAsync("q").ToListAsync();
+
+        Assert.Equal(["ErrorEvent", "DoneEvent"], events.Select(e => e.GetType().Name));
+    }
+
+    private sealed class ThrowingToolRegistry : Assistant.Core.Tools.IToolRegistry
+    {
+        public Task RegisterAsync(Kernel kernel, CancellationToken ct = default) => throw new InvalidOperationException("registry down");
     }
 
     [Fact]

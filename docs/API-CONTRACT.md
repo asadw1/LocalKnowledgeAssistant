@@ -80,7 +80,7 @@ data: <json>
 | `TokenEvent` | `Text: string` | Incremental model output. Concatenate in order to form the answer |
 | `ToolCallEvent` | `Tool: string`, `ArgumentsJson: string` | The model requested a tool. `Tool` is `plugin-function` (for example `sqlite-query`). `ArgumentsJson` is a JSON-encoded string of the arguments, not a nested object |
 | `ToolResultEvent` | `Tool: string`, `Result: string`, `IsError: bool` | Outcome of that call. `IsError` is true for validation failures, repeat-limit errors, tool errors and exceptions. `Result` is already truncated to `Agent:MaxToolResultChars` |
-| `ErrorEvent` | `Message: string` | The run stopped abnormally (timeout or iteration cap). A `DoneEvent` still follows |
+| `ErrorEvent` | `Message: string` | The run stopped abnormally (timeout, iteration cap or an unexpected failure such as Ollama being unreachable). A `DoneEvent` still follows. `Message` is written for the user and never quotes the exception text |
 | *(planned)* run ID | `RunId: string` | A run identifier sent in the first event and used in the server log scope, so a UI error can be matched to the log (ROADMAP 5.1, 6.4). The carrying event and field name are not decided; adding a field is backward compatible (section 7) |
 | `DoneEvent` | none (`{}`) | Terminal frame of every completed run |
 
@@ -128,11 +128,12 @@ There are no structured error codes yet. What a client can see today:
 | Iteration cap (`Agent:MaxIterations`, 8) | Run stops | `ErrorEvent` then `DoneEvent` |
 | Bad tool call, tool error, repeated call | Fed back to the model | `ToolResultEvent` with `IsError: true`; the run continues |
 | Client disconnects or calls `stop()` | Run cancelled | Nothing further |
-| Ollama unreachable or another exception inside the run | Not caught by the runner or the endpoint; the exception propagates after the response has started. Inferred from the code, not exercised live | The stream ends without a `DoneEvent`; the browser reports a network error or a truncated stream |
+| Ollama unreachable (`HttpRequestException`, or an `HttpClient` timeout) | Caught in the runner and logged at Error | `ErrorEvent` ("Could not reach the model server...") then `DoneEvent`. Covered by unit tests with a throwing fake model, not yet exercised against a stopped Ollama |
+| Any other exception inside the run (including tool registration) | Caught in the runner and logged at Error | `ErrorEvent` ("The run failed unexpectedly. See the server log...") then `DoneEvent`; any tokens already sent are kept |
 | Bad request body | ASP.NET Core model binding | `400` before any streaming |
 | Backend down | Connection refused | `fetch` rejects, or the Vite proxy returns `5xx`; hook shows `Request failed (status)` or the fetch message |
 
-The hook treats a missing `DoneEvent` as a normal end of stream and does not currently flag it. *(planned: a catch at the endpoint that emits an `ErrorEvent` and `DoneEvent` on unexpected failure, and a client check that a `DoneEvent` arrived; ROADMAP 5.1.)*
+The hook treats a missing `DoneEvent` as a normal end of stream and does not currently flag it. *(planned: a client check that a `DoneEvent` arrived, and rendering `ErrorEvent`; ROADMAP 5.1.)* A failure that happens before the runner starts (for example a dropped connection) can still end the stream without a `DoneEvent`.
 
 ## 6. Heartbeats and reconnection *(planned)*
 

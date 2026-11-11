@@ -29,6 +29,7 @@ public sealed class SemanticKernelAgentRunner(
 
         await using var loop = Loop(prompt, timeout.Token).GetAsyncEnumerator(timeout.Token);
         var timedOut = false;
+        string? failure = null;
         while (true)
         {
             AgentEvent next;
@@ -42,6 +43,16 @@ public sealed class SemanticKernelAgentRunner(
                 timedOut = true;
                 break;
             }
+            // Boundary: the response has already started, so an exception cannot change the HTTP status. Turn it into
+            // an ErrorEvent + DoneEvent the UI can show. A caller cancellation (client disconnect or Stop) is not
+            // matched here and propagates, so nothing further is sent to a client that has gone. This still catches a
+            // TaskCanceledException from an HttpClient timeout, which is a failure rather than a cancellation.
+            catch (Exception ex) when (!ct.IsCancellationRequested)
+            {
+                logger.LogError(ex, "Agent run failed unexpectedly ({ExceptionType})", ex.GetType().Name);
+                failure = FailureMessage(ex);
+                break;
+            }
             yield return next;
         }
 
@@ -50,9 +61,21 @@ public sealed class SemanticKernelAgentRunner(
             logger.LogWarning("Agent run exceeded {Seconds}s timeout", agent.Value.RunTimeoutSeconds);
             yield return new ErrorEvent($"The run timed out after {agent.Value.RunTimeoutSeconds} seconds.");
         }
+        else if (failure is not null)
+        {
+            yield return new ErrorEvent(failure);
+        }
 
         yield return new DoneEvent();
     }
+
+    /// <summary>
+    /// Text for the UI when a run throws. Exception messages can quote URLs, paths or arguments, so only the
+    /// well-understood "model server unreachable" case gets specifics; everything else points at the server log.
+    /// </summary>
+    private static string FailureMessage(Exception ex) => ex is HttpRequestException or TaskCanceledException
+        ? "Could not reach the model server. Check that Ollama is running and the configured model is pulled."
+        : "The run failed unexpectedly. See the server log for details.";
 
     private async IAsyncEnumerable<AgentEvent> Loop(string prompt, [EnumeratorCancellation] CancellationToken ct)
     {
