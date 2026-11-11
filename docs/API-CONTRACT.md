@@ -19,7 +19,7 @@ Boundary between `Assistant.Api` and the React dashboard (`web`). This is hand-w
 
 `200 OK`, body `{"status":"ok"}`. Reports that the process is up only. It does not check Ollama or the MCP servers, and stays that way: it is the liveness probe.
 
-### `GET /api/status` *(planned, ROADMAP 5.4)*
+### `GET /api/status` *(planned, ROADMAP 5.5)*
 
 Not built. Intended to feed the dashboard status panel and to act as a readiness check. Checks are cheap and cached for a few seconds, and Ollama is probed with a short timeout so the endpoint never hangs when Ollama is down. It returns `200` even when a dependency is unhealthy; the body says which one.
 
@@ -39,7 +39,7 @@ Planned body (field names are provisional until built):
 
 `ready` is true when Ollama is reachable, the model is pulled and at least one tool server is running. The response must not include the database path, the filesystem root, server command lines or tool arguments (see [SECURITY.md](SECURITY.md)). Failed MCP starts need `McpToolRegistry` to record them; today it only logs.
 
-### `GET /api/runs` and `GET /api/runs/{id}` *(planned, ROADMAP 5.7)*
+### `GET /api/runs` and `GET /api/runs/{id}` *(planned, ROADMAP 5.6)*
 
 Not built. Read-only access to the audit trail behind the dashboard's run history panel. Runs are recorded by the API into its own audit database, separate from the metadata index and never exposed to the model.
 
@@ -81,7 +81,7 @@ data: <json>
 | `ToolCallEvent` | `Tool: string`, `ArgumentsJson: string` | The model requested a tool. `Tool` is `plugin-function` (for example `sqlite-query`). `ArgumentsJson` is a JSON-encoded string of the arguments, not a nested object |
 | `ToolResultEvent` | `Tool: string`, `Result: string`, `IsError: bool` | Outcome of that call. `IsError` is true for validation failures, repeat-limit errors, tool errors and exceptions. `Result` is already truncated to `Agent:MaxToolResultChars` |
 | `ErrorEvent` | `Message: string` | The run stopped abnormally (timeout or iteration cap). A `DoneEvent` still follows |
-| *(planned)* run ID | `RunId: string` | A run identifier sent in the first event and used in the server log scope, so a UI error can be matched to the log (ROADMAP 5.5, 6.4). The carrying event and field name are not decided; adding a field is backward compatible (section 7) |
+| *(planned)* run ID | `RunId: string` | A run identifier sent in the first event and used in the server log scope, so a UI error can be matched to the log (ROADMAP 5.1, 6.4). The carrying event and field name are not decided; adding a field is backward compatible (section 7) |
 | `DoneEvent` | none (`{}`) | Terminal frame of every completed run |
 
 Note the naming split: events carry `plugin-function`, while the model itself sees `plugin_function`.
@@ -132,7 +132,7 @@ There are no structured error codes yet. What a client can see today:
 | Bad request body | ASP.NET Core model binding | `400` before any streaming |
 | Backend down | Connection refused | `fetch` rejects, or the Vite proxy returns `5xx`; hook shows `Request failed (status)` or the fetch message |
 
-The hook treats a missing `DoneEvent` as a normal end of stream and does not currently flag it. *(planned: a catch at the endpoint that emits an `ErrorEvent` and `DoneEvent` on unexpected failure, and a client check that a `DoneEvent` arrived; ROADMAP 5.5.)*
+The hook treats a missing `DoneEvent` as a normal end of stream and does not currently flag it. *(planned: a catch at the endpoint that emits an `ErrorEvent` and `DoneEvent` on unexpected failure, and a client check that a `DoneEvent` arrived; ROADMAP 5.1.)*
 
 ## 6. Heartbeats and reconnection *(planned)*
 
