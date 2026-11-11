@@ -57,10 +57,11 @@ Events:
 
 | Event | Meaning |
 |---|---|
+| `RunStartedEvent(RunId)` | First event of every run; the id also appears in the runner's log lines |
 | `TokenEvent(Text)` | Incremental model output |
 | `ToolCallEvent(Tool, ArgumentsJson)` | Model requested a tool |
 | `ToolResultEvent(Tool, Result, IsError)` | Tool output or validation failure |
-| `ErrorEvent(Message)` | Run stopped abnormally (timeout or iteration cap); `DoneEvent` still follows |
+| `ErrorEvent(Message)` | Run stopped abnormally (timeout, iteration cap or an unexpected failure); `DoneEvent` still follows |
 | `DoneEvent` | Run finished |
 
 ### 5.2 ReAct loop

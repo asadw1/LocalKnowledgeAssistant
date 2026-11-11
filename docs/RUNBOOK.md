@@ -137,13 +137,13 @@ Messages worth knowing:
 
 ## 7. Troubleshooting
 
-### 7.1 Chat returns immediately with a network error, or the stream ends with no `DoneEvent`
+### 7.1 Chat shows "Could not reach the model server", or a network error
 
-Most likely the model call failed: Ollama is not running, the URL is wrong, or the model is not pulled. The run throws after the response has started, so the client sees a truncated stream rather than a clear error (see [API-CONTRACT.md](API-CONTRACT.md) section 5).
+Most likely the model call failed: Ollama is not running, the URL is wrong, or the model is not pulled. The runner reports this as an `ErrorEvent` followed by `DoneEvent`, which the dashboard shows as an alert with the run id (see [API-CONTRACT.md](API-CONTRACT.md) section 5). A stream that ends with no `DoneEvent` at all is shown as "The connection closed before the run finished."
 
 1. `curl.exe http://127.0.0.1:11434/api/tags` should list `qwen2.5:7b-instruct`.
 2. If it does not answer, run `scripts/ollama-start.ps1`; if the model is missing, `ollama pull qwen2.5:7b-instruct`.
-3. Check the API console for the exception.
+3. Check the API console for the exception. Its log lines start with `Run <id>:`; use the run id shown in the dashboard to find them.
 
 ### 7.2 First token is slow, or every request is slow
 

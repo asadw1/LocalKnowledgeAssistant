@@ -77,17 +77,18 @@ data: <json>
 
 | `event:` | `data` fields | Meaning |
 |---|---|---|
+| `RunStartedEvent` | `RunId: string` | First event of every run. `RunId` is 12 lowercase hex characters. The runner writes it into its own server log lines for that run (`Run <id>: ...`), so an error shown in the UI can be matched to the log. Log lines from other components (MCP servers, the indexer) do not carry it |
 | `TokenEvent` | `Text: string` | Incremental model output. Concatenate in order to form the answer |
 | `ToolCallEvent` | `Tool: string`, `ArgumentsJson: string` | The model requested a tool. `Tool` is `plugin-function` (for example `sqlite-query`). `ArgumentsJson` is a JSON-encoded string of the arguments, not a nested object |
 | `ToolResultEvent` | `Tool: string`, `Result: string`, `IsError: bool` | Outcome of that call. `IsError` is true for validation failures, repeat-limit errors, tool errors and exceptions. `Result` is already truncated to `Agent:MaxToolResultChars` |
 | `ErrorEvent` | `Message: string` | The run stopped abnormally (timeout, iteration cap or an unexpected failure such as Ollama being unreachable). A `DoneEvent` still follows. `Message` is written for the user and never quotes the exception text |
-| *(planned)* run ID | `RunId: string` | A run identifier sent in the first event and used in the server log scope, so a UI error can be matched to the log (ROADMAP 5.1, 6.4). The carrying event and field name are not decided; adding a field is backward compatible (section 7) |
 | `DoneEvent` | none (`{}`) | Terminal frame of every completed run |
 
 Note the naming split: events carry `plugin-function`, while the model itself sees `plugin_function`.
 
 ### Ordering guarantees
 
+- `RunStartedEvent` is always the first event of a run.
 - A `ToolCallEvent` is always followed by its `ToolResultEvent` before the next `ToolCallEvent`.
 - Calls requested together in one model turn are executed and reported one after another, in request order.
 - `TokenEvent`s can appear before a tool call in the same turn (the model's "thinking aloud") and after the last result (the answer).
@@ -96,6 +97,9 @@ Note the naming split: events carry `plugin-function`, while the model itself se
 ### Example
 
 ```
+event: RunStartedEvent
+data: {"RunId":"3f9a1c07b2de"}
+
 event: ToolCallEvent
 data: {"Tool":"sqlite-query","ArgumentsJson":"{\"sql\":\"SELECT path FROM files ORDER BY size_bytes DESC LIMIT 1\"}"}
 
@@ -116,6 +120,8 @@ data: {}
 - Reads the body as a text stream and passes `buffer + chunk` to `parseSseFrames`, which returns complete frames and the unfinished tail, kept for the next chunk. A frame is complete only after its blank line.
 - A frame with no `event:` line or no `data:` line is skipped (this also makes `: comment` keep-alive lines harmless). Malformed JSON in `data:` throws and surfaces as an error.
 - Each parsed event is stored as `{ type, ...data }`.
+- A stream that ends without a `DoneEvent` is reported as an error ("The connection closed before the run finished."), because every completed run, including a failed one, ends with `DoneEvent`.
+- The dashboard shows the `RunId` under the answer and shows each `ErrorEvent` message as an alert, alongside any transport error.
 - `stop()` aborts the request. An abort is not shown as an error. On the server the aborted request cancels the run through the request's `CancellationToken`, which reaches the model and any tool call.
 
 ## 5. Errors
@@ -128,12 +134,12 @@ There are no structured error codes yet. What a client can see today:
 | Iteration cap (`Agent:MaxIterations`, 8) | Run stops | `ErrorEvent` then `DoneEvent` |
 | Bad tool call, tool error, repeated call | Fed back to the model | `ToolResultEvent` with `IsError: true`; the run continues |
 | Client disconnects or calls `stop()` | Run cancelled | Nothing further |
-| Ollama unreachable (`HttpRequestException`, or an `HttpClient` timeout) | Caught in the runner and logged at Error | `ErrorEvent` ("Could not reach the model server...") then `DoneEvent`. Covered by unit tests with a throwing fake model, not yet exercised against a stopped Ollama |
+| Ollama unreachable (`HttpRequestException`, or an `HttpClient` timeout) | Caught in the runner and logged at Error | `ErrorEvent` ("Could not reach the model server...") then `DoneEvent`. Covered by unit tests with a throwing fake model, and checked live against a stopped Ollama and against a model name Ollama does not have (a 404, reported the same way) |
 | Any other exception inside the run (including tool registration) | Caught in the runner and logged at Error | `ErrorEvent` ("The run failed unexpectedly. See the server log...") then `DoneEvent`; any tokens already sent are kept |
 | Bad request body | ASP.NET Core model binding | `400` before any streaming |
 | Backend down | Connection refused | `fetch` rejects, or the Vite proxy returns `5xx`; hook shows `Request failed (status)` or the fetch message |
 
-The hook treats a missing `DoneEvent` as a normal end of stream and does not currently flag it. *(planned: a client check that a `DoneEvent` arrived, and rendering `ErrorEvent`; ROADMAP 5.1.)* A failure that happens before the runner starts (for example a dropped connection) can still end the stream without a `DoneEvent`.
+A failure outside the runner (for example a dropped connection) can still end the stream without a `DoneEvent`; the hook reports that case as an error.
 
 ## 6. Heartbeats and reconnection *(planned)*
 
