@@ -21,10 +21,10 @@ public class ReActLoopTests
         var events = await Run(model, tools);
 
         Assert.Equal(
-            ["TokenEvent", "ToolCallEvent", "ToolResultEvent", "TokenEvent", "DoneEvent"],
+            ["RunStartedEvent", "TokenEvent", "ToolCallEvent", "ToolResultEvent", "TokenEvent", "DoneEvent"],
             events.Select(e => e.GetType().Name));
-        Assert.Equal(new ToolCallEvent("tools-echo", """{"text":"hi"}"""), events[1]);
-        Assert.Equal(new ToolResultEvent("tools-echo", "echo:hi", false), events[2]);
+        Assert.Equal(new ToolCallEvent("tools-echo", """{"text":"hi"}"""), events[2]);
+        Assert.Equal(new ToolResultEvent("tools-echo", "echo:hi", false), events[3]);
         Assert.Equal(1, tools.EchoInvocations);
         Assert.Equal("echo:hi", model.HistoryTail[1]);
     }
@@ -141,10 +141,13 @@ public class ReActLoopTests
     [Fact]
     public async Task Run_timeout_emits_error_then_done()
     {
-        var events = await Run(new ScriptedChatCompletionService(SlowChunks), options: new AgentOptions { RunTimeoutSeconds = 1 });
+        var logger = new CapturingLogger<SemanticKernelAgentRunner>();
+        var events = await RunnerFactory.Create(new ScriptedChatCompletionService(SlowChunks), new StubToolRegistry(), new AgentOptions { RunTimeoutSeconds = 1 }, logger)
+            .RunAsync("q").ToListAsync();
 
         Assert.Contains("timed out", events.OfType<ErrorEvent>().Single().Message);
         Assert.IsType<DoneEvent>(events[^1]);
+        Assert.Contains(logger.Entries, e => e.Level == LogLevel.Warning && e.Message.Contains(events.OfType<RunStartedEvent>().Single().RunId));
 
         static IEnumerable<StreamingChatMessageContent> SlowChunks()
         {
@@ -169,7 +172,7 @@ public class ReActLoopTests
 
         var events = await Run(model);
 
-        Assert.Equal(["ErrorEvent", "DoneEvent"], events.Select(e => e.GetType().Name));
+        Assert.Equal(["RunStartedEvent", "ErrorEvent", "DoneEvent"], events.Select(e => e.GetType().Name));
         Assert.Contains("Ollama", events.OfType<ErrorEvent>().Single().Message);
     }
 
@@ -180,7 +183,7 @@ public class ReActLoopTests
 
         var events = await Run(model);
 
-        Assert.Equal(["ErrorEvent", "DoneEvent"], events.Select(e => e.GetType().Name));
+        Assert.Equal(["RunStartedEvent", "ErrorEvent", "DoneEvent"], events.Select(e => e.GetType().Name));
     }
 
     [Fact]
@@ -190,20 +193,66 @@ public class ReActLoopTests
 
         var events = await Run(model);
 
-        Assert.Equal(["TokenEvent", "ErrorEvent", "DoneEvent"], events.Select(e => e.GetType().Name));
+        Assert.Equal(["RunStartedEvent", "TokenEvent", "ErrorEvent", "DoneEvent"], events.Select(e => e.GetType().Name));
         Assert.DoesNotContain("boom-secret-detail", events.OfType<ErrorEvent>().Single().Message);
         Assert.Contains("server log", events.OfType<ErrorEvent>().Single().Message);
     }
 
     [Fact]
-    public async Task Unexpected_failure_is_logged_with_its_exception_type()
+    public async Task Unexpected_failure_is_logged_with_its_exception_type_and_run_id()
     {
         var logger = new CapturingLogger<SemanticKernelAgentRunner>();
         var model = new ScriptedChatCompletionService(() => Throw(new InvalidOperationException("boom-secret-detail")));
 
-        await RunnerFactory.Create(model, new StubToolRegistry(), logger: logger).RunAsync("q").ToListAsync();
+        var events = await RunnerFactory.Create(model, new StubToolRegistry(), logger: logger).RunAsync("q").ToListAsync();
 
-        Assert.Contains(logger.Entries, e => e.Level == LogLevel.Error);
+        var runId = events.OfType<RunStartedEvent>().Single().RunId;
+        Assert.Contains(logger.Entries, e => e.Level == LogLevel.Error && e.Message.Contains("InvalidOperationException") && e.Message.Contains(runId));
+    }
+
+    [Fact]
+    public async Task First_event_is_a_short_hex_run_id_that_differs_between_runs()
+    {
+        var runner = RunnerFactory.Create(new ScriptedChatCompletionService(Say("a")), new StubToolRegistry());
+
+        var first = (await runner.RunAsync("q").ToListAsync())[0];
+        var second = (await runner.RunAsync("q").ToListAsync())[0];
+
+        var id1 = Assert.IsType<RunStartedEvent>(first).RunId;
+        var id2 = Assert.IsType<RunStartedEvent>(second).RunId;
+        Assert.Matches("^[0-9a-f]{12}$", id1);
+        Assert.NotEqual(id1, id2);
+    }
+
+    [Fact]
+    public async Task Every_info_or_higher_runner_log_line_carries_the_run_id()
+    {
+        var logger = new CapturingLogger<SemanticKernelAgentRunner>();
+        var model = new ScriptedChatCompletionService(
+            Call("tools-echo", """{"text":"hi"}"""), // ok: iteration log
+            Call("tools-nope", "{}"),                // rejected: validation warning
+            Call("tools-boom", "{}"),                // tool throws: warning with exception
+            Say("done"));
+
+        var events = await RunnerFactory.Create(model, new StubToolRegistry(), logger: logger).RunAsync("q").ToListAsync();
+
+        var runId = events.OfType<RunStartedEvent>().Single().RunId;
+        var lines = logger.Entries.Where(e => e.Level >= LogLevel.Information).ToList();
+        Assert.True(lines.Count >= 4);
+        Assert.All(lines, e => Assert.Contains(runId, e.Message));
+    }
+
+    [Fact]
+    public async Task Iteration_cap_log_carries_the_run_id()
+    {
+        var logger = new CapturingLogger<SemanticKernelAgentRunner>();
+        var model = new ScriptedChatCompletionService(Call("tools-echo", """{"text":"x"}"""));
+
+        var events = await RunnerFactory.Create(model, new StubToolRegistry(), new AgentOptions { MaxIterations = 2, MaxIdenticalCalls = 99 }, logger)
+            .RunAsync("q").ToListAsync();
+
+        var runId = events.OfType<RunStartedEvent>().Single().RunId;
+        Assert.Contains(logger.Entries, e => e.Level == LogLevel.Warning && e.Message.Contains("iteration cap") && e.Message.Contains(runId));
     }
 
     [Fact]
@@ -212,7 +261,7 @@ public class ReActLoopTests
         var events = await RunnerFactory.Create(new ScriptedChatCompletionService(Say("x")), new ThrowingToolRegistry())
             .RunAsync("q").ToListAsync();
 
-        Assert.Equal(["ErrorEvent", "DoneEvent"], events.Select(e => e.GetType().Name));
+        Assert.Equal(["RunStartedEvent", "ErrorEvent", "DoneEvent"], events.Select(e => e.GetType().Name));
     }
 
     private sealed class ThrowingToolRegistry : Assistant.Core.Tools.IToolRegistry

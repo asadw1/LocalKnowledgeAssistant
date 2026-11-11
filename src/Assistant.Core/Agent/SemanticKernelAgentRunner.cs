@@ -24,10 +24,15 @@ public sealed class SemanticKernelAgentRunner(
 {
     public async IAsyncEnumerable<AgentEvent> RunAsync(string prompt, [EnumeratorCancellation] CancellationToken ct = default)
     {
+        // 12 hex chars of a random GUID: short enough to read out in a bug report, ample for a single-user app.
+        // Logs carry it as an explicit {RunId} argument; a logger scope would not survive the yields of an async iterator.
+        var runId = Guid.NewGuid().ToString("N")[..12];
+        yield return new RunStartedEvent(runId);
+
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeout.CancelAfter(TimeSpan.FromSeconds(agent.Value.RunTimeoutSeconds));
 
-        await using var loop = Loop(prompt, timeout.Token).GetAsyncEnumerator(timeout.Token);
+        await using var loop = Loop(prompt, runId, timeout.Token).GetAsyncEnumerator(timeout.Token);
         var timedOut = false;
         string? failure = null;
         while (true)
@@ -49,7 +54,7 @@ public sealed class SemanticKernelAgentRunner(
             // TaskCanceledException from an HttpClient timeout, which is a failure rather than a cancellation.
             catch (Exception ex) when (!ct.IsCancellationRequested)
             {
-                logger.LogError(ex, "Agent run failed unexpectedly ({ExceptionType})", ex.GetType().Name);
+                logger.LogError(ex, "Run {RunId}: agent run failed unexpectedly ({ExceptionType})", runId, ex.GetType().Name);
                 failure = FailureMessage(ex);
                 break;
             }
@@ -58,7 +63,7 @@ public sealed class SemanticKernelAgentRunner(
 
         if (timedOut)
         {
-            logger.LogWarning("Agent run exceeded {Seconds}s timeout", agent.Value.RunTimeoutSeconds);
+            logger.LogWarning("Run {RunId}: agent run exceeded {Seconds}s timeout", runId, agent.Value.RunTimeoutSeconds);
             yield return new ErrorEvent($"The run timed out after {agent.Value.RunTimeoutSeconds} seconds.");
         }
         else if (failure is not null)
@@ -77,10 +82,10 @@ public sealed class SemanticKernelAgentRunner(
         ? "Could not reach the model server. Check that Ollama is running and the configured model is pulled."
         : "The run failed unexpectedly. See the server log for details.";
 
-    private async IAsyncEnumerable<AgentEvent> Loop(string prompt, [EnumeratorCancellation] CancellationToken ct)
+    private async IAsyncEnumerable<AgentEvent> Loop(string prompt, string runId, [EnumeratorCancellation] CancellationToken ct)
     {
         await tools.RegisterAsync(kernel, ct);
-        logger.LogDebug("Kernel functions: {Functions}", string.Join(", ", kernel.Plugins.GetFunctionsMetadata().Select(f => $"[{f.PluginName}|{f.Name}]")));
+        logger.LogDebug("Run {RunId}: kernel functions: {Functions}", runId, string.Join(", ", kernel.Plugins.GetFunctionsMetadata().Select(f => $"[{f.PluginName}|{f.Name}]")));
 
         var history = new ChatHistory(ollama.Value.SystemPrompt);
         history.AddUserMessage(prompt);
@@ -122,25 +127,25 @@ public sealed class SemanticKernelAgentRunner(
                 var argsJson = JsonSerializer.Serialize(call.Arguments ?? []);
                 yield return new ToolCallEvent(name, argsJson);
 
-                var (result, isError) = await ExecuteAsync(call, argsJson, executed, ct);
-                logger.LogInformation("Iteration {Iteration}: tool {Tool} {Outcome}", iteration, name, isError ? "failed" : "ok");
+                var (result, isError) = await ExecuteAsync(call, argsJson, executed, runId, ct);
+                logger.LogInformation("Run {RunId} iteration {Iteration}: tool {Tool} {Outcome}", runId, iteration, name, isError ? "failed" : "ok");
 
                 yield return new ToolResultEvent(name, result, isError);
                 history.Add(new ChatMessageContent(AuthorRole.Tool, [new FunctionResultContent(call, result)]));
             }
         }
 
-        logger.LogWarning("Agent hit the {Max}-iteration cap", agent.Value.MaxIterations);
+        logger.LogWarning("Run {RunId}: agent hit the {Max}-iteration cap", runId, agent.Value.MaxIterations);
         yield return new ErrorEvent($"Stopped after {agent.Value.MaxIterations} iterations without a final answer.");
     }
 
     private async Task<(string Result, bool IsError)> ExecuteAsync(
-        FunctionCallContent call, string argsJson, Dictionary<string, int> executed, CancellationToken ct)
+        FunctionCallContent call, string argsJson, Dictionary<string, int> executed, string runId, CancellationToken ct)
     {
         var validated = ToolCallValidator.Validate(kernel, call);
         if (!validated.IsValid)
         {
-            logger.LogWarning("Rejected tool call: {Error}", validated.Error);
+            logger.LogWarning("Run {RunId}: rejected tool call: {Error}", runId, validated.Error);
             return (validated.Error!, true);
         }
 
@@ -161,7 +166,7 @@ public sealed class SemanticKernelAgentRunner(
         }
         catch (Exception ex)
         {
-            logger.LogWarning(ex, "Tool {Tool} threw", call.FunctionName);
+            logger.LogWarning(ex, "Run {RunId}: tool {Tool} threw", runId, call.FunctionName);
             return ($"Tool '{call.FunctionName}' failed: {ex.Message}", true);
         }
     }
