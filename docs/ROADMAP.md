@@ -11,7 +11,7 @@ Delivery plan for the Local Knowledge & File Assistant. Each phase ends in somet
 | 2 | MCP filesystem tools | Done |
 | 3 | ReAct loop with validation | Done |
 | 4 | SQLite metadata and indexing | Done |
-| 5 | Dashboard UI | Not started |
+| 5 | Dashboard UI | In progress |
 | 6 | Hardening and evaluation | Not started |
 
 ---
@@ -94,12 +94,14 @@ Delivery plan for the Local Knowledge & File Assistant. Each phase ends in somet
 
 **Goal:** A usable interface that makes the agent's reasoning visible.
 
-- **5.1 Conversation view:** Message list with markdown rendering and auto-scroll.
-- **5.2 Tool activity cards:** Collapsible cards for each call (arguments, result, error state, duration).
-- **5.3 Run controls:** Cancel in-flight run, retry, clear conversation.
-- **5.4 Status panel:** Ollama reachability, model name, connected MCP servers and their tools.
-- **5.5 Error and empty states:** Backend down, model missing, stream interrupted.
-- **5.6 Frontend tests:** SSE parser edge cases (split frames, multiple events per chunk), component tests for tool cards.
+**Already in place (from Phases 0-1):** `useAgentStream` (fetch POST stream, typed `AgentEvent`s, abort), `parseSseFrames`, and a minimal `App` (prompt box, streamed answer text, Send/Stop, empty hint, HTTP/network error alert). Vitest coverage is at 100%.
+
+- **5.1 Conversation view (partial):** Message list with markdown rendering and auto-scroll. Today `App` shows one plain-text answer built from `TokenEvent`s; there is no message list, markdown or auto-scroll.
+- **5.2 Tool activity cards (not started):** Collapsible cards for each call (arguments, result, error state, duration). `ToolCallEvent` and `ToolResultEvent` are collected by the hook but not rendered.
+- **5.3 Run controls (partial):** Cancel in-flight run (Stop is done), retry, clear conversation (not started).
+- **5.4 Status panel (not started):** Ollama reachability, model name, connected MCP servers and their tools. Needs a backend status endpoint first.
+- **5.5 Error and empty states (partial):** Backend down, model missing, stream interrupted. The empty hint and HTTP/network error alert exist. Not done: the backend emits `ErrorEvent` only for the run timeout and the iteration cap, so an exception (for example Ollama down) ends the stream with neither `ErrorEvent` nor `DoneEvent`; and the UI does not render `ErrorEvent`.
+- **5.6 Frontend tests (partial):** SSE parser edge cases (split frames, multiple frames per chunk) are covered; component tests for tool cards wait on 5.2.
 
 **Exit criteria:** A full session is understandable from the UI alone, including failures.
 
