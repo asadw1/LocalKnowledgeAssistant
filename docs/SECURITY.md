@@ -88,6 +88,7 @@ Residual risk: an injected document can mislead the answer or make the model rea
 ## 5. Secrets and data handling
 
 - No credentials are used or stored. Nothing to rotate.
+- *(planned, ROADMAP 5.7)*: an audit database will persist run history, including prompts, tool arguments and truncated results in plain text. It will be a separate git-ignored file written only by the API, never reachable through an MCP server, with a retention cap and a clear action. Until it is built, the next bullet holds.
 - Conversations are not persisted. Logs (console, Information level) include tool names and outcomes; `Debug` level logs the kernel function list. Tool arguments and results are streamed to the browser and are not logged as such, but a rejected call logs its validation error, which can quote argument values.
 - The metadata database holds paths, sizes, times and hashes of files under the root. It is git-ignored; do not commit it, since paths may reveal personal information.
 - `sample-docs/` is committed and must contain only content safe to publish.
