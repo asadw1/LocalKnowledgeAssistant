@@ -12,6 +12,7 @@ Documentation for the Local Knowledge & File Assistant.
 | [API-CONTRACT.md](API-CONTRACT.md) | HTTP endpoints, SSE event schemas, client behaviour, error cases |
 | [SECURITY.md](SECURITY.md) | Threat model, read-only controls by boundary, prompt-injection posture, change checklist |
 | [RUNBOOK.md](RUNBOOK.md) | Starting and stopping, live verification, process cleanup, log reading, troubleshooting |
+| [adr/](adr/README.md) | Architecture decision records: what was decided, what else was considered, and the cost |
 
 ## Project summary
 
