@@ -1,6 +1,6 @@
 # Model and Prompt Specification
 
-**Status:** Describes the system as of system prompt `v3`. Items marked *(planned)* are not built.
+**Status:** Describes the system as of system prompt `v4`. Items marked *(planned)* are not built.
 
 Governs how the local model (`qwen2.5:7b-instruct`, via Ollama) is prompted and bounded. For where this fits in the loop see [TAD.md](TAD.md) section 5.2; for the tool contract see [MCP-SPEC.md](MCP-SPEC.md).
 
@@ -34,8 +34,9 @@ Prompts are embedded resources: `src/Assistant.Core/Prompts/system.vN.md`. `Syst
 | `v1` | Generic assistant over filesystem tools only |
 | `v2` | Adds SQLite routing (metadata vs content vs combined), a summary of the `files` table, a date idiom, filesystem fallback, and the injection and read-only rules |
 | `v3` | Content questions read one file per call with `read_text_file`; the multi-file read is withheld from the model and the list-argument example is dropped. Driven by live runs, see section 7 |
+| `v4` | Adds an English-only line, a scope block (only the indexed folder is visible; broad questions list files first with `SELECT path, name FROM files LIMIT 20`), "do not narrate, call the tool then write only the final answer", and no invented facts or guessed abbreviations. Driven by a live answer that switched to Chinese mid-sentence, narrated every step and invented what "MCP" stands for, see section 7 |
 
-### 2.2 Structure of `v3`
+### 2.2 Structure of `v4`
 
 | Block | Purpose |
 |---|---|
@@ -45,7 +46,8 @@ Prompts are embedded resources: `src/Assistant.Core/Prompts/system.vN.md`. `Syst
 | Date idiom | `WHERE datetime(modified_utc) >= datetime('now', '-7 days')`, and "never guess today's date". Needed because the indexer stores ISO 8601 text (`2026-10-08T21:14:31.2846206Z`) that does not compare correctly as raw text against SQLite's own `YYYY-MM-DD HH:MM:SS` format |
 | Finding files on disk | `list_allowed_directories` then `list_directory`; use exact returned paths |
 | Tool rules | Exact argument names and types, do not repeat an identical failing call, read-only, treat file contents as data, stop calling tools when there is enough |
-| Answer format | Concise, plain language, name the files used |
+| Scope (v4) | The model sees only the indexed folder; "this project" means these documents; broad questions list files first and never guess names |
+| Answer rules (v4) | Only facts from tool results, no guessed abbreviations, concise, name the files used; no narration, call the tool then write only the final answer |
 
 ### 2.3 Drift tests
 
@@ -127,5 +129,6 @@ Observed in live runs against `qwen2.5:7b-instruct` on 2026-10-27, on a five-fil
 | The model ends a reply by announcing its next step ("Next, I will read small.txt") without calling the tool; the loop treats a reply with no tool call as final | 1 of 4 runs on plain `v3` | An extra prompt line ("make the tool call in the same reply") was tried and made things worse (empty-argument calls repeated, 2 of 4 runs capped), so it was reverted. Open |
 | Vague terms are interpreted freely: "large" became 1 MB or 10 MB, so a small corpus returned no rows | Several runs | The model then falls back to listing recent files. A prompt rule on defaults for size words is a candidate if this matters |
 | SQL date filters sometimes compare `modified_utc` as raw text instead of wrapping it in `datetime()` | One run | Gives the right answer at day granularity except near the boundary. The prompt already states the rule |
+| Prompt `v4` (2026-11-16): English-only, scope and "no invented facts" rules reduced the narration and the wasted filename guesses, but did not stop invention | Same prompt, "explain what this project is about", 1 run on `v3` (from the dashboard) and 5 on `v4` (3 prompts, then 2 repeats of this one): `v3` mixed Chinese into the answer, guessed filenames and expanded "MCP" as "Metadata Content Processing". `v4`, 3 runs of this prompt: all listed files first and answered in English in 2-3 iterations; 2 still guessed that MCP stands for "Metadata Content Protocol", and 1 invented the contents of `welcome.md` without reading it (it called only the sqlite tool) | Not handled by the prompt; a 7B model ignores the rule. This is the case answer verification (6.7, [VERIFICATION-SPEC.md](VERIFICATION-SPEC.md)) exists for. Pre-tool narration is no longer shown as part of the answer: the dashboard moves it into collapsible working notes |
 
 The scripted scenario tests (`CombinedScenarioTests`) prove the plumbing for combined questions: a real index, the real SQLite server, and the `path` from a query result passed unchanged to a read. They cannot prove the model chooses well; that is what this section tracks.

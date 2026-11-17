@@ -29,6 +29,29 @@ public sealed class SystemPromptTests : IDisposable
     }
 
     [Fact]
+    public void Every_numbered_version_up_to_the_current_one_loads()
+    {
+        var current = int.Parse(SystemPrompts.CurrentVersion.TrimStart('v'));
+
+        for (var n = 1; n <= current; n++) Assert.NotEmpty(SystemPrompts.Load($"v{n}"));
+        Assert.Throws<InvalidOperationException>(() => SystemPrompts.Load($"v{current + 1}"));
+    }
+
+    [Fact]
+    public void Prompt_states_language_scope_and_grounding_rules()
+    {
+        // Added in v4 after a live answer that switched into Chinese mid-sentence, narrated its tool calls,
+        // and invented what "MCP" stands for. The wording itself is only proven by the live checks in PROMPT-SPEC.
+        var prompt = SystemPrompts.Default;
+
+        Assert.Contains("reply in English", prompt);
+        Assert.Contains("only see the documents in the indexed folder", prompt);
+        Assert.Contains("Do not guess file names", prompt);
+        Assert.Contains("Do not invent facts", prompt);
+        Assert.Contains("write only the final answer", prompt);
+    }
+
+    [Fact]
     public void Prompt_names_every_column_of_the_files_table()
     {
         Directory.CreateDirectory(_dir);
