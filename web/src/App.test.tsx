@@ -34,6 +34,8 @@ vi.mock('./hooks/useAgentStream', async importOriginal => {
 })
 
 beforeEach(() => {
+  window.localStorage.clear()
+  document.documentElement.classList.remove('dark')
   hook.state = { events: [], running: false, error: null }
   hook.send.mockReset()
   hook.stop.mockReset()
@@ -57,6 +59,107 @@ describe('App', () => {
     await user.click(screen.getByRole('button', { name: 'Send' }))
 
     expect(hook.send).toHaveBeenCalledExactlyOnceWith('what files are here?')
+  })
+
+  it('clears the input after sending, by button and by Enter', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    const input = screen.getByPlaceholderText('Type a prompt')
+
+    await user.type(input, 'first')
+    await user.click(screen.getByRole('button', { name: 'Send' }))
+    expect(input).toHaveValue('')
+
+    await user.type(input, 'second{Enter}')
+    expect(input).toHaveValue('')
+    expect(hook.send.mock.calls).toEqual([['first'], ['second']])
+  })
+
+  it('shows each sent prompt as a user bubble followed by the assistant bubble, keeping earlier turns', async () => {
+    const user = userEvent.setup()
+    const { rerender } = render(<App />)
+    const input = screen.getByPlaceholderText('Type a prompt')
+
+    await user.type(input, 'one{Enter}')
+    hook.state = { events: [{ type: 'TokenEvent', Text: 'Answer one' }, { type: 'DoneEvent' }], running: false, error: null }
+    rerender(<App />)
+    await user.type(input, 'two{Enter}')
+    hook.state = { events: [{ type: 'TokenEvent', Text: 'Answer two' }, { type: 'DoneEvent' }], running: false, error: null }
+    rerender(<App />)
+
+    const bubbles = screen.getAllByRole('article')
+    expect(bubbles.map(b => [b.getAttribute('aria-label'), b.textContent])).toEqual([
+      ['You', 'one'],
+      ['Assistant', 'Answer one'],
+      ['You', 'two'],
+      ['Assistant', 'Answer two'],
+    ])
+    expect(screen.queryByText('Ask something to get started.')).not.toBeInTheDocument()
+  })
+
+  it('keeps a failed turn (alert, no answer bubble) in the transcript when the next prompt is sent', async () => {
+    const user = userEvent.setup()
+    const { rerender } = render(<App />)
+    const input = screen.getByPlaceholderText('Type a prompt')
+
+    await user.type(input, 'one{Enter}')
+    hook.state = { events: [{ type: 'ErrorEvent', Message: 'model down' }, { type: 'DoneEvent' }], running: false, error: null }
+    rerender(<App />)
+    await user.type(input, 'two{Enter}')
+    hook.state = { events: [], running: true, error: null }
+    rerender(<App />)
+
+    expect(screen.getAllByRole('article').map(b => b.textContent)).toEqual(['one', 'two', '…'])
+    expect(screen.getByRole('alert')).toHaveTextContent('model down')
+  })
+
+  it('cycles through sent prompts with ArrowUp/ArrowDown and restores the draft', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    const input = screen.getByPlaceholderText('Type a prompt')
+    await user.type(input, 'first{Enter}')
+    await user.type(input, 'second{Enter}')
+
+    await user.type(input, 'draft{ArrowUp}')
+    expect(input).toHaveValue('second')
+    await user.keyboard('{ArrowUp}')
+    expect(input).toHaveValue('first')
+    await user.keyboard('{ArrowDown}')
+    expect(input).toHaveValue('second')
+    await user.keyboard('{ArrowDown}')
+    expect(input).toHaveValue('draft')
+  })
+
+  it('leaves the input alone for arrow keys with no history, other keys, and ArrowDown when not browsing', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    const input = screen.getByPlaceholderText('Type a prompt')
+
+    await user.type(input, 'abc{ArrowUp}{ArrowDown}{ArrowLeft}')
+
+    expect(input).toHaveValue('abc')
+  })
+
+  it('returns focus to the input when a run ends', () => {
+    hook.state = { events: [], running: true, error: null }
+    const { rerender } = render(<App />)
+    expect(screen.getByPlaceholderText('Type a prompt')).not.toHaveFocus()
+
+    hook.state = { events: [], running: false, error: null }
+    rerender(<App />)
+
+    expect(screen.getByPlaceholderText('Type a prompt')).toHaveFocus()
+  })
+
+  it('toggles dark mode on and off from the header button', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: 'Dark mode' }))
+    expect(document.documentElement).toHaveClass('dark')
+
+    await user.click(screen.getByRole('button', { name: 'Light mode' }))
+    expect(document.documentElement).not.toHaveClass('dark')
   })
 
   it('does not send a blank prompt even if the form is submitted directly', () => {
@@ -90,12 +193,33 @@ describe('App', () => {
     expect(hook.stop).toHaveBeenCalledOnce()
   })
 
+  it('shows text from before a tool call as collapsed working notes, not as part of the answer', async () => {
+    hook.state = {
+      events: [
+        { type: 'TokenEvent', Text: "Let's query the database." },
+        { type: 'ToolCallEvent', Tool: 'sqlite-query', ArgumentsJson: '{}' },
+        { type: 'ToolResultEvent', Tool: 'sqlite-query', Result: 'x', IsError: false },
+        { type: 'TokenEvent', Text: 'The final answer.' },
+        { type: 'DoneEvent' },
+      ],
+      running: false,
+      error: null,
+    }
+    const user = userEvent.setup()
+    render(<App />)
+
+    expect(screen.getByRole('article', { name: 'Assistant' })).toHaveTextContent('The final answer.')
+    expect(screen.getByRole('article', { name: 'Assistant' })).not.toHaveTextContent('query the database')
+    const notes = screen.getByText('Working notes (1)')
+    expect(screen.getByText("Let's query the database.")).not.toBeVisible()
+    await user.click(notes)
+    expect(screen.getByText("Let's query the database.")).toBeVisible()
+  })
+
   it('shows the streamed answer made only of token text', () => {
     hook.state = {
       events: [
         { type: 'TokenEvent', Text: 'Hel' },
-        { type: 'ToolCallEvent', Tool: 'sqlite-query', ArgumentsJson: '{}' },
-        { type: 'ToolResultEvent', Tool: 'sqlite-query', Result: 'x', IsError: false },
         { type: 'TokenEvent', Text: 'lo' },
         { type: 'DoneEvent' },
       ],

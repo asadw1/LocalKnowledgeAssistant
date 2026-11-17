@@ -1,1 +1,40 @@
 ﻿@import "tailwindcss";
+
+/* Dark mode follows a `dark` class on <html> (set by useTheme and index.html), not only the OS setting, so the toggle can override it. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+body {
+  background-color: #fff;
+  color: #0f172a;
+}
+
+html.dark {
+  color-scheme: dark;
+}
+
+/* Markdown in assistant bubbles. Tailwind's reset strips default element styles, so they are restored here.
+   Tints use currentColor so one rule works in both themes. */
+.md > :first-child { margin-top: 0; }
+.md > :last-child { margin-bottom: 0; }
+.md p, .md ul, .md ol, .md pre, .md blockquote, .md table { margin: 0.6em 0; }
+.md h1, .md h2, .md h3, .md h4 { margin: 0.9em 0 0.4em; font-weight: 600; line-height: 1.25; }
+.md h1 { font-size: 1.4em; }
+.md h2 { font-size: 1.25em; }
+.md h3 { font-size: 1.1em; }
+.md ul { list-style: disc; padding-left: 1.4em; }
+.md ol { list-style: decimal; padding-left: 1.4em; }
+.md li > ul, .md li > ol { margin: 0.2em 0; }
+.md a { text-decoration: underline; color: #3b82f6; }
+.md code { padding: 0.1em 0.35em; border-radius: 0.25rem; font-size: 0.9em; background: color-mix(in srgb, currentColor 12%, transparent); }
+.md pre { overflow-x: auto; padding: 0.75em 1em; border-radius: 0.5rem; background: color-mix(in srgb, currentColor 10%, transparent); }
+.md pre code { padding: 0; background: none; font-size: 0.875em; }
+.md blockquote { padding-left: 0.9em; border-left: 3px solid color-mix(in srgb, currentColor 30%, transparent); }
+.md hr { margin: 0.9em 0; border-color: color-mix(in srgb, currentColor 25%, transparent); }
+.md table { display: block; overflow-x: auto; border-collapse: collapse; }
+.md th, .md td { padding: 0.3em 0.7em; border: 1px solid color-mix(in srgb, currentColor 25%, transparent); }
+.md th { font-weight: 600; }
+
+html.dark body {
+  background-color: #020617;
+  color: #e2e8f0;
+}
