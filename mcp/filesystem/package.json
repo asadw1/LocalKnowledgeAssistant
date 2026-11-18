@@ -1,0 +1,9 @@
+{
+  "name": "lka-filesystem-mcp",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Pinned install of the off-the-shelf filesystem MCP server. See docs/SECURITY.md section 3.1.",
+  "dependencies": {
+    "@modelcontextprotocol/server-filesystem": "2.3.0"
+  }
+}
