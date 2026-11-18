@@ -14,5 +14,11 @@ public sealed class McpServerOptions
 /// listed here. This is what keeps a third-party server read-only; <see cref="ExcludeTools"/> is then applied on top.
 /// <c>null</c> offers every tool; an empty array offers none.
 /// </param>
+/// <param name="PathRoot">
+/// The one folder this server may touch. When set, <see cref="Tools.PathGuard"/> rejects any model-supplied path
+/// argument that is not absolute, uses <c>..</c>, or resolves (links included) outside it, before the call reaches the
+/// server. It must also be one of <paramref name="Args"/>, which is how the server itself is told its root.
+/// </param>
 public sealed record McpServerDefinition(
-    string Name, string Command, string[] Args, string[]? ExcludeTools = null, string[]? IncludeTools = null);
+    string Name, string Command, string[] Args, string[]? ExcludeTools = null, string[]? IncludeTools = null,
+    string? PathRoot = null);

@@ -149,6 +149,24 @@ public sealed class SemanticKernelAgentRunner(
             return (validated.Error!, true);
         }
 
+        // Independent of the server's own checks: for example, a path outside the server's root is refused here.
+        string? blocked;
+        try
+        {
+            blocked = tools.CheckCall(validated.Function!, validated.Arguments ?? []);
+        }
+        // Boundary: a security check that throws must fail closed, so the call is blocked rather than run unchecked.
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Run {RunId}: argument check for tool {Tool} failed; the call was blocked", runId, call.FunctionName);
+            blocked = "This call was blocked because its arguments could not be checked. Try different arguments.";
+        }
+        if (blocked is not null)
+        {
+            logger.LogWarning("Run {RunId}: blocked tool call {Tool}: {Reason}", runId, call.FunctionName, blocked);
+            return (blocked, true);
+        }
+
         var signature = $"{call.PluginName}-{call.FunctionName}:{argsJson}";
         executed[signature] = executed.GetValueOrDefault(signature) + 1;
         if (executed[signature] > agent.Value.MaxIdenticalCalls)

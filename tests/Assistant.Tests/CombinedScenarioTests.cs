@@ -72,11 +72,15 @@ public sealed class CombinedCorpusFixture : IAsyncLifetime
         {
             foreach (var part in parts) await part.RegisterAsync(kernel, ct);
         }
+
+        public string? CheckCall(KernelFunction function, KernelArguments arguments) => parts.Select(p => p.CheckCall(function, arguments)).FirstOrDefault(e => e is not null);
     }
 
     /// <summary>Stands in for the filesystem server's <c>read_text_file</c>, including refusing paths outside its root.</summary>
     private sealed class FilesystemReadStub(string root) : IToolRegistry
     {
+        public string? CheckCall(KernelFunction function, KernelArguments arguments) => null;
+
         public Task RegisterAsync(Kernel kernel, CancellationToken ct = default)
         {
             kernel.Plugins.AddFromFunctions("filesystem",

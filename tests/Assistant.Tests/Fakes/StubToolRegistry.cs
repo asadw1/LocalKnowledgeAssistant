@@ -8,6 +8,11 @@ public sealed class StubToolRegistry : IToolRegistry
 {
     public int EchoInvocations { get; private set; }
 
+    /// <summary>Decides <see cref="CheckCall"/>; null (the default) lets every call through.</summary>
+    public Func<KernelFunction, KernelArguments, string?>? Guard { get; init; }
+
+    public string? CheckCall(KernelFunction function, KernelArguments arguments) => Guard?.Invoke(function, arguments);
+
     public Task RegisterAsync(Kernel kernel, CancellationToken ct = default)
     {
         kernel.Plugins.AddFromFunctions("tools",

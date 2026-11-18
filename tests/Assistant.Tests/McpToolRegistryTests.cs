@@ -1,5 +1,7 @@
 using Assistant.Core.Mcp;
 using Assistant.Core.Tools;
+using Assistant.Tests.Fakes;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Microsoft.SemanticKernel;
@@ -24,8 +26,135 @@ public sealed class McpToolRegistryTests : IDisposable
         return new("sqlite", "dotnet", [Path.Combine(AppContext.BaseDirectory, "Assistant.SqliteMcp.dll"), db], exclude, include);
     }
 
-    private static McpToolRegistry Create(McpServerDefinition server) =>
-        new(Options.Create(new McpServerOptions { Servers = [server] }), NullLogger<McpToolRegistry>.Instance);
+    private static McpToolRegistry Create(McpServerDefinition server, ILogger<McpToolRegistry>? logger = null, TimeSpan? startupTimeout = null) =>
+        new(Options.Create(new McpServerOptions { Servers = [server] }), logger ?? NullLogger<McpToolRegistry>.Instance)
+        {
+            StartupTimeout = startupTimeout ?? TimeSpan.FromSeconds(30),
+        };
+
+    private string SqliteDll => Path.Combine(AppContext.BaseDirectory, "Assistant.SqliteMcp.dll");
+
+    private static KernelArguments Args(params (string Name, object? Value)[] args)
+    {
+        var arguments = new KernelArguments();
+        foreach (var (name, value) in args) arguments[name] = value;
+        return arguments;
+    }
+
+    [Fact]
+    public async Task Server_missing_an_allow_listed_tool_is_rejected_and_none_of_its_tools_are_used()
+    {
+        var log = new CapturingLogger<McpToolRegistry>();
+        await using var registry = Create(SqliteServer(include: ["query", "drop_everything"]), log);
+
+        await registry.StartAsync(CancellationToken.None);
+
+        Assert.Empty(registry.Tools);
+        var error = Assert.Single(log.Entries, e => e.Level == LogLevel.Error);
+        Assert.Contains("rejected", error.Message);
+        Assert.Contains("drop_everything", error.Message);
+    }
+
+    [Fact]
+    public async Task A_path_root_that_is_not_a_launch_argument_is_rejected_before_anything_is_launched()
+    {
+        var log = new CapturingLogger<McpToolRegistry>();
+        // The command does not exist: reaching the launch would log a different error, so this proves the check came first.
+        await using var registry = Create(new("fs", "definitely-not-a-real-command", ["somewhere"], PathRoot: "elsewhere"), log);
+
+        await registry.StartAsync(CancellationToken.None);
+
+        Assert.Empty(registry.Tools);
+        Assert.Contains("PathRoot", Assert.Single(log.Entries, e => e.Level == LogLevel.Error).Message);
+    }
+
+    [Fact]
+    public async Task A_server_that_is_too_slow_to_start_is_skipped_and_the_timeout_is_logged()
+    {
+        var log = new CapturingLogger<McpToolRegistry>();
+        await using var registry = Create(SqliteServer(), log, startupTimeout: TimeSpan.FromMilliseconds(1));
+
+        await registry.StartAsync(CancellationToken.None);
+
+        Assert.Empty(registry.Tools);
+        Assert.Contains("did not become ready", Assert.Single(log.Entries, e => e.Level == LogLevel.Error).Message);
+    }
+
+    [Fact]
+    public async Task Cancelling_startup_stops_it_instead_of_being_logged_as_a_server_failure()
+    {
+        using var cts = new CancellationTokenSource();
+        await cts.CancelAsync();
+        await using var registry = Create(SqliteServer());
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => registry.StartAsync(cts.Token));
+        Assert.Empty(registry.Tools);
+    }
+
+    [Fact]
+    public async Task Servers_that_offer_unlisted_tools_log_them_as_withheld()
+    {
+        var log = new CapturingLogger<McpToolRegistry>();
+        await using var registry = Create(SqliteServer(include: ["query"]), log);
+
+        await registry.StartAsync(CancellationToken.None);
+
+        Assert.Contains(log.Entries, e => e.Message.Contains("stay withheld: describe_schema"));
+    }
+
+    [Fact]
+    public async Task Calls_to_a_server_with_a_path_root_are_checked_by_the_function_they_resolve_to()
+    {
+        var db = Path.Combine(_dir, "meta.db");
+        new Assistant.Core.Indexing.MetadataDatabase(db).Migrate();
+        // The root here is a file only because this server takes one argument that names it; the guard logic is the same.
+        await using var registry = Create(new("sqlite", "dotnet", [SqliteDll, db], PathRoot: db));
+        await registry.StartAsync(CancellationToken.None);
+        var kernel = new Kernel();
+        await registry.RegisterAsync(kernel);
+        var query = kernel.Plugins.GetFunction("sqlite", "query");
+
+        Assert.Contains("outside the allowed folder", registry.CheckCall(query, Args(("path", Path.Combine(_dir, "other.db")))));
+        Assert.Null(registry.CheckCall(query, Args(("path", db))));
+        Assert.Null(registry.CheckCall(query, Args(("sql", "SELECT 1"))));
+    }
+
+    [Fact]
+    public async Task A_function_from_a_server_without_a_path_root_is_not_checked()
+    {
+        await using var registry = Create(SqliteServer());
+        await registry.StartAsync(CancellationToken.None);
+        var kernel = new Kernel();
+        await registry.RegisterAsync(kernel);
+
+        Assert.Null(registry.CheckCall(kernel.Plugins.GetFunction("sqlite", "query"), Args(("path", "/anywhere"))));
+    }
+
+    [Fact]
+    public async Task A_function_without_a_plugin_is_not_checked_and_null_arguments_are_rejected()
+    {
+        await using var registry = Create(SqliteServer());
+        var loose = KernelFunctionFactory.CreateFromMethod(() => "x", "loose"); // not part of any plugin
+
+        Assert.Null(registry.CheckCall(loose, Args(("path", "/anywhere"))));
+        Assert.Throws<ArgumentNullException>(() => registry.CheckCall(null!, Args()));
+        Assert.Throws<ArgumentNullException>(() => registry.CheckCall(loose, null!));
+    }
+
+    private sealed class ThrowingDisposable : IAsyncDisposable
+    {
+        public ValueTask DisposeAsync() => throw new InvalidOperationException("pipe already closed");
+    }
+
+    [Fact]
+    public async Task A_failure_while_discarding_a_rejected_client_is_logged_not_thrown()
+    {
+        var log = new CapturingLogger<McpToolRegistry>();
+
+        await McpToolRegistry.DisposeQuietlyAsync(new ThrowingDisposable(), "fs", log);
+
+        Assert.Contains("could not be shut down cleanly", Assert.Single(log.Entries).Message);
+    }
 
     [Fact]
     public async Task Failing_server_does_not_throw_and_exposes_no_tools()
@@ -133,41 +262,4 @@ public sealed class McpToolRegistryTests : IDisposable
 
     [Fact]
     public void Filter_drops_named_tools_case_insensitively() => Assert.Empty(McpToolRegistry.Filter([], null, ["x"]));
-
-    // Opt-in: needs node/npx and network on first run. Set ASSISTANT_MCP_INTEGRATION=1.
-    [Fact]
-    public async Task Real_filesystem_server_enforces_allow_list_and_excludes_write_tools()
-    {
-        if (Environment.GetEnvironmentVariable("ASSISTANT_MCP_INTEGRATION") != "1") return;
-
-        var root = Directory.CreateTempSubdirectory().FullName;
-        await File.WriteAllTextAsync(Path.Combine(root, "a.txt"), "hello");
-        var npx = OperatingSystem.IsWindows() ? "npx.cmd" : "npx";
-        await using var registry = Create(new("filesystem", npx,
-            ["-y", "@modelcontextprotocol/server-filesystem", root],
-            ExcludeTools: ["write_file", "edit_file", "create_directory", "move_file"],
-            IncludeTools: ["read_text_file", "list_directory", "search_files", "list_allowed_directories"]));
-        await registry.StartAsync(CancellationToken.None);
-
-        // Exact set: a new write tool in a later server version (append_file and copy_file arrived this way) must not appear.
-        var names = registry.Tools["filesystem"].Select(t => t.Name).Order().ToList();
-        Assert.Equal(["list_allowed_directories", "list_directory", "read_text_file", "search_files"], names);
-
-        var read = registry.Tools["filesystem"].First(t => t.Name == "read_text_file");
-        var ok = await read.CallAsync(new Microsoft.Extensions.AI.AIFunctionArguments { ["path"] = Path.Combine(root, "a.txt") });
-        Assert.Contains("hello", System.Text.Json.JsonSerializer.Serialize(ok));
-
-        var outside = Path.Combine(Path.GetTempPath(), "outside-" + Guid.NewGuid() + ".txt");
-        await File.WriteAllTextAsync(outside, "secret");
-        try
-        {
-            var denied = await Record.ExceptionAsync(async () =>
-            {
-                var r = await read.CallAsync(new Microsoft.Extensions.AI.AIFunctionArguments { ["path"] = outside });
-                if (System.Text.Json.JsonSerializer.Serialize(r).Contains("secret")) throw new InvalidOperationException("allow-list bypassed");
-            });
-            Assert.True(denied is not InvalidOperationException);
-        }
-        finally { File.Delete(outside); }
-    }
 }

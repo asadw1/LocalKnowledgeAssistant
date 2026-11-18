@@ -267,6 +267,8 @@ public class ReActLoopTests
     private sealed class ThrowingToolRegistry : Assistant.Core.Tools.IToolRegistry
     {
         public Task RegisterAsync(Kernel kernel, CancellationToken ct = default) => throw new InvalidOperationException("registry down");
+
+        public string? CheckCall(KernelFunction function, KernelArguments arguments) => null;
     }
 
     [Fact]
@@ -293,6 +295,8 @@ public class ReActLoopTests
 
     private sealed class CancellingToolRegistry(CancellationTokenSource cts) : Assistant.Core.Tools.IToolRegistry
     {
+        public string? CheckCall(KernelFunction function, KernelArguments arguments) => null;
+
         public Task RegisterAsync(Kernel kernel, CancellationToken ct = default)
         {
             kernel.Plugins.AddFromFunctions("tools",
@@ -318,5 +322,67 @@ public class ReActLoopTests
         {
             await foreach (var _ in runner.RunAsync("q", cts.Token)) { }
         });
+    }
+
+    [Fact]
+    public async Task A_call_blocked_by_the_registry_is_never_executed_and_the_model_is_told_why()
+    {
+        var tools = new StubToolRegistry { Guard = (_, _) => "Argument 'path' was blocked: outside the allowed folder." };
+        var log = new Fakes.CapturingLogger<SemanticKernelAgentRunner>();
+        var model = new ScriptedChatCompletionService(Call("tools-echo", """{"text":"hi"}"""), Say("understood"));
+
+        var events = await RunnerFactory.Create(model, tools, logger: log).RunAsync("q").ToListAsync();
+
+        var result = events.OfType<ToolResultEvent>().Single();
+        Assert.True(result.IsError);
+        Assert.Contains("was blocked", result.Result);
+        Assert.Equal(0, tools.EchoInvocations);
+        Assert.Contains("was blocked", model.HistoryTail[1]);
+        Assert.Contains(log.Entries, e => e.Level == LogLevel.Warning && e.Message.Contains("blocked tool call echo"));
+        Assert.IsType<DoneEvent>(events[^1]);
+    }
+
+    [Fact]
+    public async Task A_registry_check_that_throws_blocks_the_call_instead_of_running_it_unchecked()
+    {
+        var tools = new StubToolRegistry { Guard = (_, _) => throw new IOException("disk gone") };
+        var log = new Fakes.CapturingLogger<SemanticKernelAgentRunner>();
+        var model = new ScriptedChatCompletionService(Call("tools-echo", """{"text":"hi"}"""), Say("ok"));
+
+        var events = await RunnerFactory.Create(model, tools, logger: log).RunAsync("q").ToListAsync();
+
+        var result = events.OfType<ToolResultEvent>().Single();
+        Assert.True(result.IsError);
+        Assert.Contains("could not be checked", result.Result);
+        Assert.DoesNotContain("disk gone", result.Result); // exception text stays in the log, not in front of the model or UI
+        Assert.Equal(0, tools.EchoInvocations);
+        Assert.Contains(log.Entries, e => e.Level == LogLevel.Error && e.Message.Contains("the call was blocked"));
+        Assert.IsType<DoneEvent>(events[^1]);
+    }
+
+    [Fact]
+    public async Task The_registry_check_gets_the_resolved_function_even_when_the_call_carries_no_plugin_name()
+    {
+        // The Ollama connector sends "plugin_function" names. The call builder only splits on '-', so such a call has an
+        // empty plugin name but still resolves; a guard keyed on the call's own plugin name would be skipped.
+        var seen = new List<string?>();
+        var tools = new StubToolRegistry { Guard = (function, _) => { seen.Add(function.PluginName); return "blocked"; } };
+
+        var events = await Run(new ScriptedChatCompletionService(Call("tools_echo", """{"text":"hi"}"""), Say("ok")), tools);
+
+        Assert.Equal(["tools"], seen);
+        Assert.Equal("blocked", events.OfType<ToolResultEvent>().Single().Result);
+        Assert.Equal(0, tools.EchoInvocations);
+    }
+
+    [Fact]
+    public async Task A_call_the_registry_allows_still_runs()
+    {
+        var tools = new StubToolRegistry { Guard = (_, _) => null };
+
+        var events = await Run(new ScriptedChatCompletionService(Call("tools-echo", """{"text":"hi"}"""), Say("done")), tools);
+
+        Assert.False(events.OfType<ToolResultEvent>().Single().IsError);
+        Assert.Equal(1, tools.EchoInvocations);
     }
 }
