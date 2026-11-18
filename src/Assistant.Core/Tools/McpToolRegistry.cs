@@ -41,7 +41,7 @@ public sealed class McpToolRegistry(IOptions<McpServerOptions> options, ILogger<
                 _clients.Add(client);
 
                 var tools = await client.ListToolsAsync(cancellationToken: timeout.Token);
-                _tools[server.Name] = Filter(tools, server.ExcludeTools);
+                _tools[server.Name] = Filter(tools, server.IncludeTools, server.ExcludeTools);
                 logger.LogInformation("MCP server {Server} ready with tools: {Tools}",
                     server.Name, string.Join(", ", _tools[server.Name].Select(t => t.Name)));
             }
@@ -55,11 +55,15 @@ public sealed class McpToolRegistry(IOptions<McpServerOptions> options, ILogger<
     /// <summary>Replaces <c>{BaseDirectory}</c> with the app's base directory (ends with a separator).</summary>
     public static string ExpandTokens(string arg) => arg.Replace("{BaseDirectory}", AppContext.BaseDirectory, StringComparison.Ordinal);
 
-    /// <summary>Drops tools named in <paramref name="exclude"/> (case-insensitive).</summary>
-    public static IReadOnlyList<McpClientTool> Filter(IEnumerable<McpClientTool> tools, string[]? exclude)
+    /// <summary>
+    /// Keeps only tools named in <paramref name="include"/> (when not null), then drops those named in
+    /// <paramref name="exclude"/>. Names match case-insensitively.
+    /// </summary>
+    public static IReadOnlyList<McpClientTool> Filter(IEnumerable<McpClientTool> tools, string[]? include, string[]? exclude)
     {
+        var allowed = include is null ? null : new HashSet<string>(include, StringComparer.OrdinalIgnoreCase);
         var blocked = new HashSet<string>(exclude ?? [], StringComparer.OrdinalIgnoreCase);
-        return tools.Where(t => !blocked.Contains(t.Name)).ToList();
+        return tools.Where(t => (allowed is null || allowed.Contains(t.Name)) && !blocked.Contains(t.Name)).ToList();
     }
 
     public Task RegisterAsync(Kernel kernel, CancellationToken ct = default)

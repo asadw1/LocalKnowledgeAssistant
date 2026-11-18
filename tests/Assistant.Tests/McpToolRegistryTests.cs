@@ -17,11 +17,11 @@ public sealed class McpToolRegistryTests : IDisposable
     }
 
     /// <summary>The shipped read-only SQLite server, launched the way the app launches it.</summary>
-    private McpServerDefinition SqliteServer(string[]? exclude = null)
+    private McpServerDefinition SqliteServer(string[]? exclude = null, string[]? include = null)
     {
         var db = Path.Combine(_dir, "meta.db");
         new Assistant.Core.Indexing.MetadataDatabase(db).Migrate();
-        return new("sqlite", "dotnet", [Path.Combine(AppContext.BaseDirectory, "Assistant.SqliteMcp.dll"), db], exclude);
+        return new("sqlite", "dotnet", [Path.Combine(AppContext.BaseDirectory, "Assistant.SqliteMcp.dll"), db], exclude, include);
     }
 
     private static McpToolRegistry Create(McpServerDefinition server) =>
@@ -50,8 +50,8 @@ public sealed class McpToolRegistryTests : IDisposable
     }
 
     [Fact]
-    public void Filter_without_exclusions_returns_everything() =>
-        Assert.Empty(McpToolRegistry.Filter([], null));
+    public void Filter_without_lists_returns_everything() =>
+        Assert.Empty(McpToolRegistry.Filter([], null, null));
 
     [Fact]
     public async Task Working_server_exposes_its_tools_and_registers_them_as_a_plugin()
@@ -89,6 +89,38 @@ public sealed class McpToolRegistryTests : IDisposable
     }
 
     [Fact]
+    public async Task Only_allow_listed_tools_are_offered_and_matching_ignores_case()
+    {
+        await using var registry = Create(SqliteServer(include: ["QUERY"]));
+        await registry.StartAsync(CancellationToken.None);
+        var kernel = new Kernel();
+
+        await registry.RegisterAsync(kernel);
+
+        // describe_schema exists on the server but is not allow-listed, so the model never sees it.
+        Assert.Equal(["query"], registry.Tools["sqlite"].Select(t => t.Name));
+        Assert.Equal(["query"], kernel.Plugins["sqlite"].Select(f => f.Name));
+    }
+
+    [Fact]
+    public async Task Exclusion_still_applies_on_top_of_the_allow_list()
+    {
+        await using var registry = Create(SqliteServer(exclude: ["query"], include: ["query", "describe_schema"]));
+        await registry.StartAsync(CancellationToken.None);
+
+        Assert.Equal(["describe_schema"], registry.Tools["sqlite"].Select(t => t.Name));
+    }
+
+    [Fact]
+    public async Task An_empty_allow_list_offers_no_tools()
+    {
+        await using var registry = Create(SqliteServer(include: []));
+        await registry.StartAsync(CancellationToken.None);
+
+        Assert.Empty(registry.Tools["sqlite"]);
+    }
+
+    [Fact]
     public async Task Stop_completes_and_dispose_after_a_started_server_is_safe_to_repeat()
     {
         var registry = Create(SqliteServer());
@@ -100,7 +132,7 @@ public sealed class McpToolRegistryTests : IDisposable
     }
 
     [Fact]
-    public void Filter_drops_named_tools_case_insensitively() => Assert.Empty(McpToolRegistry.Filter([], ["x"]));
+    public void Filter_drops_named_tools_case_insensitively() => Assert.Empty(McpToolRegistry.Filter([], null, ["x"]));
 
     // Opt-in: needs node/npx and network on first run. Set ASSISTANT_MCP_INTEGRATION=1.
     [Fact]
@@ -113,12 +145,13 @@ public sealed class McpToolRegistryTests : IDisposable
         var npx = OperatingSystem.IsWindows() ? "npx.cmd" : "npx";
         await using var registry = Create(new("filesystem", npx,
             ["-y", "@modelcontextprotocol/server-filesystem", root],
-            ["write_file", "edit_file", "create_directory", "move_file"]));
+            ExcludeTools: ["write_file", "edit_file", "create_directory", "move_file"],
+            IncludeTools: ["read_text_file", "list_directory", "search_files", "list_allowed_directories"]));
         await registry.StartAsync(CancellationToken.None);
 
-        var names = registry.Tools["filesystem"].Select(t => t.Name).ToList();
-        Assert.Contains("read_text_file", names);
-        Assert.DoesNotContain("write_file", names);
+        // Exact set: a new write tool in a later server version (append_file and copy_file arrived this way) must not appear.
+        var names = registry.Tools["filesystem"].Select(t => t.Name).Order().ToList();
+        Assert.Equal(["list_allowed_directories", "list_directory", "read_text_file", "search_files"], names);
 
         var read = registry.Tools["filesystem"].First(t => t.Name == "read_text_file");
         var ok = await read.CallAsync(new Microsoft.Extensions.AI.AIFunctionArguments { ["path"] = Path.Combine(root, "a.txt") });
