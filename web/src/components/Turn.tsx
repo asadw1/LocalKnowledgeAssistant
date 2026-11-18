@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react'
+import type { ToolCallData } from '../lib/transcript'
 import { Markdown } from './Markdown'
+import { ToolCard } from './ToolCard'
 
 /** One question and its outcome, as shown in the transcript. */
 export interface TurnData {
@@ -7,6 +9,8 @@ export interface TurnData {
   answer: string
   /** The model's text from before each tool call; not part of the answer. */
   notes: string[]
+  /** Tool calls of the run, in call order. */
+  tools: ToolCallData[]
   runId?: string
   alerts: string[]
 }
@@ -50,6 +54,9 @@ export function Turn({ turn, running }: { turn: TurnData; running: boolean }) {
           </ul>
         </details>
       )}
+      {turn.tools.map((call, i) => (
+        <ToolCard key={i} call={call} />
+      ))}
       {(turn.answer || running) && <Bubble role="assistant">{turn.answer ? <Markdown>{turn.answer}</Markdown> : '…'}</Bubble>}
       {turn.runId && <p className="text-xs text-slate-500 dark:text-slate-400">Run {turn.runId}</p>}
       {turn.alerts.map((message, i) => (

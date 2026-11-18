@@ -216,6 +216,27 @@ describe('App', () => {
     expect(screen.getByText("Let's query the database.")).toBeVisible()
   })
 
+  it('shows each tool call as a collapsed card that expands to its arguments and result', async () => {
+    hook.state = {
+      events: [
+        { type: 'ToolCallEvent', Tool: 'sqlite-query', ArgumentsJson: '{"sql":"select 1"}', at: 1000 },
+        { type: 'ToolResultEvent', Tool: 'sqlite-query', Result: 'one row', IsError: false, at: 1400 },
+        { type: 'TokenEvent', Text: 'Done.' },
+        { type: 'DoneEvent' },
+      ],
+      running: false,
+      error: null,
+    }
+    const user = userEvent.setup()
+    render(<App />)
+
+    const card = screen.getByLabelText('Tool call sqlite-query')
+    expect(card).toHaveTextContent('done · 400 ms')
+    expect(screen.getByText('one row')).not.toBeVisible()
+    await user.click(screen.getByText('sqlite-query'))
+    expect(screen.getByText('one row')).toBeVisible()
+  })
+
   it('shows the streamed answer made only of token text', () => {
     hook.state = {
       events: [

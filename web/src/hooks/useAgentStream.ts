@@ -4,8 +4,8 @@ import { parseSseFrames } from '../lib/sse'
 export type AgentEvent =
   | { type: 'RunStartedEvent'; RunId: string }
   | { type: 'TokenEvent'; Text: string }
-  | { type: 'ToolCallEvent'; Tool: string; ArgumentsJson: string }
-  | { type: 'ToolResultEvent'; Tool: string; Result: string; IsError: boolean }
+  | { type: 'ToolCallEvent'; Tool: string; ArgumentsJson: string; at?: number }
+  | { type: 'ToolResultEvent'; Tool: string; Result: string; IsError: boolean; at?: number }
   | { type: 'ErrorEvent'; Message: string }
   | { type: 'DoneEvent' }
 
@@ -44,8 +44,14 @@ export function useAgentStream() {
         const parsed = parseSseFrames(buffer + value)
         buffer = parsed.rest
         if (parsed.events.some(e => e.type === 'DoneEvent')) sawDone = true
+        // Tool events get `at`, the client's receive time (ms), for tool durations; the server sends no timestamps.
+        const at = Date.now()
+        const stamp = (type: string) => (type === 'ToolCallEvent' || type === 'ToolResultEvent' ? { at } : {})
         if (parsed.events.length)
-          setEvents(prev => [...prev, ...parsed.events.map(e => ({ type: e.type, ...(e.data as object) }) as AgentEvent)])
+          setEvents(prev => [
+            ...prev,
+            ...parsed.events.map(e => ({ type: e.type, ...(e.data as object), ...stamp(e.type) }) as AgentEvent),
+          ])
       }
       if (!sawDone) setError('The connection closed before the run finished.')
     } catch (e) {

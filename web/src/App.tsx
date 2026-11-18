@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
 import { Turn, type TurnData } from './components/Turn'
 import { useAgentStream } from './hooks/useAgentStream'
-import { splitAnswer } from './lib/transcript'
+import { buildToolCalls, splitAnswer } from './lib/transcript'
 import { usePromptHistory } from './hooks/usePromptHistory'
 import { useTheme } from './hooks/useTheme'
 
@@ -20,7 +20,7 @@ export default function App() {
   const runId = events.flatMap(e => (e.type === 'RunStartedEvent' ? [e.RunId] : []))[0]
   // Run errors arrive in the stream (ErrorEvent); `error` covers transport failures. The run id lets a report be matched to the server log.
   const alerts = [...events.flatMap(e => (e.type === 'ErrorEvent' ? [e.Message] : [])), ...(error ? [error] : [])]
-  const current: TurnData = { prompt: currentPrompt, answer, notes, runId, alerts }
+  const current: TurnData = { prompt: currentPrompt, answer, notes, tools: buildToolCalls(events), runId, alerts }
   const hasCurrent = currentPrompt !== undefined || running || events.length > 0 || error !== null
 
   // A disabled input loses focus, so hand it back when a run ends and the user can type again.

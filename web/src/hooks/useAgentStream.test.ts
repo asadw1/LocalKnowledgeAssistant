@@ -23,6 +23,7 @@ const mockFetch = (impl: (input: string, init: RequestInit) => Promise<unknown>)
 
 afterEach(() => {
   vi.unstubAllGlobals()
+  vi.restoreAllMocks()
 })
 
 describe('useAgentStream', () => {
@@ -50,6 +51,26 @@ describe('useAgentStream', () => {
     expect(result.current.events).toEqual([{ type: 'TokenEvent', Text: 'Hi' }, { type: 'DoneEvent' }])
     expect(result.current.running).toBe(false)
     expect(result.current.error).toBeNull()
+  })
+
+  it('stamps tool events with the client receive time and leaves other events alone', async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(1234)
+    mockFetch(async () =>
+      streamOf(
+        frame('ToolCallEvent', { Tool: 't', ArgumentsJson: '{}' }),
+        frame('ToolResultEvent', { Tool: 't', Result: 'r', IsError: false }),
+        frame('DoneEvent', {}),
+      ),
+    )
+    const { result } = renderHook(() => useAgentStream())
+
+    await act(() => result.current.send('q'))
+
+    expect(result.current.events).toEqual([
+      { type: 'ToolCallEvent', Tool: 't', ArgumentsJson: '{}', at: 1234 },
+      { type: 'ToolResultEvent', Tool: 't', Result: 'r', IsError: false, at: 1234 },
+      { type: 'DoneEvent' },
+    ])
   })
 
   it('collects the run id event like any other typed event', async () => {
