@@ -23,9 +23,9 @@ Never relax a read-only guarantee to make a feature easier. Any change touching 
 
 ### 3.1 Tool exposure
 
-Write-capable filesystem tools (`write_file`, `edit_file`, `create_directory`, `move_file`) are withheld from the model via `ExcludeTools` in `appsettings.json`, so they are never advertised, and a call to one is rejected as an unknown tool by `ToolCallValidator` before it reaches the server. The model sees six tools (list in [PROMPT-SPEC.md](PROMPT-SPEC.md) section 3).
+The filesystem server's tools are gated by an allow-list, `IncludeTools` in `appsettings.json`: only `read_text_file`, `list_directory`, `search_files` and `list_allowed_directories` are offered. Every other tool, write-capable or not, is never advertised, and a call to one is rejected as an unknown tool by `ToolCallValidator` before it reaches the server. `ExcludeTools` is applied on top to trim read tools the model misuses (list in [PROMPT-SPEC.md](PROMPT-SPEC.md) section 3).
 
-Gap: `ExcludeTools` is a deny-list. A new version of the filesystem server that adds a write tool under a new name would be exposed until someone adds it. The opt-in integration test (`ASSISTANT_MCP_INTEGRATION=1`) checks the tool set against the real server; run it when upgrading that package *(planned: switch to an allow-list)*.
+History: the gate used to be a deny-list only. A newer server version added `append_file` and `copy_file`, which are write tools and were exposed to the model until the allow-list replaced it (found 2026-11-17 in the startup log). A tool added by a later version now stays hidden until someone lists it. `McpConfigTests` pins the shipped list, and the opt-in integration test (`ASSISTANT_MCP_INTEGRATION=1`) asserts the real server offers exactly the four read-only tools; run it when upgrading that package. The package is launched unpinned through `npx -y`, so the version can still change under us.
 
 ### 3.2 Filesystem root
 
@@ -98,7 +98,7 @@ Residual risk: an injected document can mislead the answer or make the model rea
 Before merging a change that touches tools, the SQLite engine, the indexer or the root configuration:
 
 - [ ] A test proves a write attempt still fails and the target is unchanged.
-- [ ] New MCP server: write-capable tools listed in `ExcludeTools`, and the tool set reviewed.
+- [ ] New third-party MCP server: `IncludeTools` lists only the read-only tools, and the tool set was reviewed.
 - [ ] `Indexing:Root` still equals the filesystem server's allow-listed root.
 - [ ] The root does not include `data/`, secrets, or profile directories.
 - [ ] Live check against the real model if the prompt or tool set changed ([RUNBOOK.md](RUNBOOK.md) section 4).

@@ -35,16 +35,17 @@ Config section `Mcp:Servers` (`McpServerOptions`, `McpServerDefinition`):
 | `Name` | Server name. Becomes the Semantic Kernel plugin name, so the prefix of every tool name (`sqlite_query`) |
 | `Command` | Executable to launch (`npx`, `dotnet`) |
 | `Args` | Arguments. The token `{BaseDirectory}` expands to the app's base directory (with trailing separator); this is how the API finds `Assistant.SqliteMcp.dll` beside it |
-| `ExcludeTools` | Tool names withheld from the model, matched case-insensitively. Used to keep the agent read-only and the tool set small |
+| `IncludeTools` | Allow-list, matched case-insensitively. When set, only these tools are offered, so a tool added by a later server version stays hidden until listed. Omitted offers every tool; an empty array offers none. This is what keeps a third-party server read-only |
+| `ExcludeTools` | Tool names withheld from the model, matched case-insensitively and applied after `IncludeTools`. Used to trim overlapping tools and ones the model misuses |
 
-Adding a server is a new entry here, not a code change. If its tools can write, list them in `ExcludeTools`.
+Adding a server is a new entry here, not a code change. If the server is third-party and any of its tools can write, set `IncludeTools` to the read-only ones; do not rely on `ExcludeTools` alone.
 
 Relative paths in `Args` resolve against the API's working directory; see [RUNBOOK.md](RUNBOOK.md) section 2.
 
 ## 4. Process lifecycle (current)
 
 1. `McpToolRegistry.StartAsync` runs at host start. For each configured server, in order, it creates a `StdioClientTransport`, connects, and calls `tools/list`. Connect and list share a 30 second timeout per server.
-2. `ExcludeTools` is applied; the remaining tools are stored per server name.
+2. `IncludeTools` (if set) and then `ExcludeTools` are applied; the remaining tools are stored per server name.
 3. On each agent run, `RegisterAsync` adds each server's tools to the run's kernel as a plugin (skipping a plugin that is already present).
 4. On shutdown `DisposeAsync` disposes every client, which ends the child processes.
 
@@ -115,7 +116,7 @@ The statement filter exists to give clear errors; the guarantee itself is the re
 
 ## 7. Filesystem server (off the shelf)
 
-`@modelcontextprotocol/server-filesystem` is launched through `npx -y` with one allow-listed root as its argument. Path and traversal enforcement is that server's job. We keep it safe by listing its write tools in `ExcludeTools` and by keeping `Indexing:Root` equal to the allow-listed root (by hand; they are not linked). The first launch may download the package, so it needs network once.
+`@modelcontextprotocol/server-filesystem` is launched through `npx -y` with one allow-listed root as its argument. Path and traversal enforcement is that server's job. We keep it safe by allow-listing its read-only tools in `IncludeTools` and by keeping `Indexing:Root` equal to the allow-listed root (by hand; they are not linked). The first launch may download the package, so it needs network once.
 
 The opt-in integration test (`ASSISTANT_MCP_INTEGRATION=1`, needs Node and network) starts the real server and checks both properties.
 
