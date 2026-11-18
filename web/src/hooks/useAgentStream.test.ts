@@ -191,13 +191,61 @@ describe('useAgentStream', () => {
     expect(result.current.error).toBe('plain string')
   })
 
-  it('reports a malformed frame instead of swallowing it', async () => {
-    mockFetch(async () => streamOf('event: TokenEvent\ndata: {oops\n\n'))
+  it('shows a plain message for a malformed frame and keeps nothing from that chunk', async () => {
+    mockFetch(async () => streamOf(frame('TokenEvent', { Text: 'ok' }) + 'event: TokenEvent\ndata: {broken\n\n'))
     const { result } = renderHook(() => useAgentStream())
 
     await act(() => result.current.send('q'))
 
-    expect(result.current.error).toMatch(/JSON/i)
+    expect(result.current.error).toBe('The server sent an event the dashboard could not read.')
+    expect(result.current.events).toEqual([])
+    expect(result.current.running).toBe(false)
+  })
+
+  it('reports a known event with a missing or mistyped field instead of rendering it', async () => {
+    mockFetch(async () => streamOf(frame('ToolResultEvent', { Tool: 't', Result: 'r' })))
+    const { result } = renderHook(() => useAgentStream())
+
+    await act(() => result.current.send('q'))
+
+    expect(result.current.error).toBe('The server sent a malformed ToolResultEvent.')
+    expect(result.current.events).toEqual([])
+  })
+
+  it('ignores an event type it does not know', async () => {
+    mockFetch(async () => streamOf(frame('FutureEvent', { x: 1 }), frame('TokenEvent', { Text: 'hi' }), frame('DoneEvent', {})))
+    const { result } = renderHook(() => useAgentStream())
+
+    await act(() => result.current.send('q'))
+
+    expect(result.current.error).toBeNull()
+    expect(result.current.events).toEqual([{ type: 'TokenEvent', Text: 'hi' }, { type: 'DoneEvent' }])
+  })
+
+  it('releases the connection after bad data and tolerates a stream that refuses to cancel', async () => {
+    const cancelled = vi.fn()
+    mockFetch(
+      async () =>
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              controller.enqueue(new TextEncoder().encode('event: TokenEvent\ndata: {broken\n\n'))
+            },
+            cancel() {
+              cancelled()
+              throw new Error('refuses to cancel')
+            },
+          }),
+          { status: 200 },
+        ),
+    )
+    const { result } = renderHook(() => useAgentStream())
+
+    await act(() => result.current.send('q'))
+
+    expect(cancelled).toHaveBeenCalled()
+    expect(result.current.error).toBe('The server sent an event the dashboard could not read.')
+    expect(result.current.running).toBe(false)
   })
 
   it('stop aborts the request without reporting it as an error', async () => {

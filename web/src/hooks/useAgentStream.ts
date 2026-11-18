@@ -1,4 +1,5 @@
 import { useCallback, useRef, useState } from 'react'
+import { toAgentEvent } from '../lib/events'
 import { parseSseFrames } from '../lib/sse'
 
 export type AgentEvent =
@@ -36,25 +37,36 @@ export function useAgentStream() {
       })
       if (!res.ok || !res.body) throw new Error(`Request failed (${res.status})`)
       const reader = res.body.pipeThrough(new TextDecoderStream()).getReader()
-      let buffer = ''
-      let sawDone = false
-      for (;;) {
-        const { value, done } = await reader.read()
-        if (done) break
-        const parsed = parseSseFrames(buffer + value)
-        buffer = parsed.rest
-        if (parsed.events.some(e => e.type === 'DoneEvent')) sawDone = true
-        // Tool events get `at`, the client's receive time (ms), for tool durations; the server sends no timestamps.
-        const at = Date.now()
-        const stamp = (type: string) => (type === 'ToolCallEvent' || type === 'ToolResultEvent' ? { at } : {})
-        if (parsed.events.length)
-          setEvents(prev => [
-            ...prev,
-            ...parsed.events.map(e => ({ type: e.type, ...(e.data as object), ...stamp(e.type) }) as AgentEvent),
-          ])
+      try {
+        let buffer = ''
+        let sawDone = false
+        for (;;) {
+          const { value, done } = await reader.read()
+          if (done) break
+          const parsed = parseSseFrames(buffer + value)
+          buffer = parsed.rest
+          // Validate every frame of the chunk before showing any of it, so a malformed frame cannot leave half a chunk on screen.
+          const at = Date.now()
+          const received = parsed.events.flatMap(e => {
+            const event = toAgentEvent(e.type, e.data)
+            if (!event) return []
+            if (event.type === 'DoneEvent') sawDone = true
+            // Tool events get `at`, the client's receive time (ms), for tool durations; the server sends no timestamps.
+            return [event.type === 'ToolCallEvent' || event.type === 'ToolResultEvent' ? { ...event, at } : event]
+          })
+          if (received.length) setEvents(prev => [...prev, ...received])
+        }
+        if (!sawDone) setError('The connection closed before the run finished.')
+      } finally {
+        // Release the connection when we stop reading early (malformed data, abort); a failure to cancel changes nothing.
+        try {
+          await reader.cancel()
+        } catch {
+          /* already closed or errored */
+        }
       }
-      if (!sawDone) setError('The connection closed before the run finished.')
     } catch (e) {
+      // Stop is not an error. Everything else is shown: our own messages (HTTP status, StreamFormatError) or the browser's network error text.
       if (!abort.signal.aborted) setError(e instanceof Error ? e.message : String(e))
     } finally {
       setRunning(false)

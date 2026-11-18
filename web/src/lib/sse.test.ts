@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseSseFrames } from './sse'
+import { parseSseFrames, StreamFormatError } from './sse'
 
 describe('parseSseFrames', () => {
   it('returns nothing for an empty buffer', () => {
@@ -43,7 +43,11 @@ describe('parseSseFrames', () => {
     expect(parseSseFrames(buffer)).toEqual({ events: [], rest: '' })
   })
 
-  it('throws on malformed JSON so the caller can surface the failure', () => {
-    expect(() => parseSseFrames('event: TokenEvent\ndata: {oops\n\n')).toThrow(SyntaxError)
+  it('throws a StreamFormatError on malformed JSON, without quoting the payload or the event name', () => {
+    const attempt = () => parseSseFrames('event: <b>Evil</b>\ndata: {oops secret\n\n')
+
+    expect(attempt).toThrow(StreamFormatError)
+    expect(attempt).toThrow('The server sent an event the dashboard could not read.')
+    expect(attempt).not.toThrow(/secret|Evil/)
   })
 })
