@@ -123,5 +123,6 @@ Stages are listed in build order. Backend gaps that the UI relies on (5.1) come 
 - **6.6 Retrospective:** Update TAD with what changed; decide on SSE vs SignalR and `Microsoft.Extensions.AI` migration.
 
 - **6.7 Answer verification and confidence badge (not started):** Check each factual claim in an answer against the run's tool evidence (deterministic checks, an independent judge call that must quote its evidence, and read-only re-derivation of SQL results) and show a `Low/Medium/High - X%` badge with claim coverage. Not a self-reported or tool-success score. Full design in [VERIFICATION-SPEC.md](VERIFICATION-SPEC.md). Needs 6.1 for calibration and ships as experimental until the percentages are shown to track real accuracy; the dashboard badge is part of 5.3.
+- **6.8 Own read-only filesystem MCP server (not started):** Replace the third-party filesystem server with a small read-only one in this repo, like `Assistant.SqliteMcp`: list, read, search under one root, with no write code at all, so the read-only rule holds by construction. Would let `PathGuard` stay as a second layer and remove the npm dependency. Background and the layers that exist today: SECURITY.md 3.1 and 3.8.
 
 **Exit criteria:** Evaluation results are recorded in `docs/`; known limits are documented.

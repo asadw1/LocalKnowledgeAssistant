@@ -17,6 +17,7 @@ flowchart TD
 | `src/Assistant.Core` | Agent loop, LLM abstraction, tool registry, MCP wiring (Semantic Kernel) |
 | `src/Assistant.Api` | Minimal API, DI composition, SSE endpoint `/api/chat` |
 | `src/Assistant.SqliteMcp` | Our own read-only SQLite MCP server (stdio), launched by the API |
+| `mcp/filesystem` | Pinned install (exact version + lockfile) of the off-the-shelf filesystem MCP server; run `npm ci` here once |
 | `data/` | SQL migrations (`data/migrations`) and the generated metadata database (git-ignored) |
 | `tests/Assistant.Tests` | xUnit tests (agent loop, tool validation, indexer, read-only SQL server) |
 | `web` | React + TypeScript + Vite + Tailwind v4 dashboard |

@@ -84,7 +84,7 @@ data: <json>
 | `ErrorEvent` | `Message: string` | The run stopped abnormally (timeout, iteration cap or an unexpected failure such as Ollama being unreachable). A `DoneEvent` still follows. `Message` is written for the user and never quotes the exception text |
 | `DoneEvent` | none (`{}`) | Terminal frame of every completed run |
 
-Note the naming split: events carry `plugin-function`, while the model itself sees `plugin_function`.
+Note on names: the model sees and sends `plugin_function` (for example `sqlite_query`). The Ollama connector's calls arrive with an empty plugin name, so events carry that same `plugin_function` text; the `plugin-function` form appears only when a call does carry a plugin name. Code must therefore never rely on a call's plugin name; use the function the kernel resolved.
 
 ### Ordering guarantees
 

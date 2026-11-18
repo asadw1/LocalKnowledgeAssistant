@@ -18,7 +18,7 @@ The wire protocol is the Model Context Protocol over stdio, implemented by the o
 ```mermaid
 flowchart LR
     Runner["SemanticKernelAgentRunner"] --> Registry["McpToolRegistry<br/>(IToolRegistry, IHostedService)"]
-    Registry -- "stdio, JSON-RPC" --> FS["npx @modelcontextprotocol/server-filesystem<br/>(Node child process)"]
+    Registry -- "stdio, JSON-RPC" --> FS["node mcp/filesystem/... server-filesystem<br/>(pinned install, Node child process)"]
     Registry -- "stdio, JSON-RPC" --> SQL["dotnet Assistant.SqliteMcp.dll<br/>(.NET child process)"]
     SQL --> DB[("data/assistant.db<br/>read-only")]
     FS --> Docs[("allow-listed root<br/>sample-docs")]
@@ -33,9 +33,10 @@ Config section `Mcp:Servers` (`McpServerOptions`, `McpServerDefinition`):
 | Field | Meaning |
 |---|---|
 | `Name` | Server name. Becomes the Semantic Kernel plugin name, so the prefix of every tool name (`sqlite_query`) |
-| `Command` | Executable to launch (`npx`, `dotnet`) |
+| `Command` | Executable to launch (`node`, `dotnet`) |
 | `Args` | Arguments. The token `{BaseDirectory}` expands to the app's base directory (with trailing separator); this is how the API finds `Assistant.SqliteMcp.dll` beside it |
 | `IncludeTools` | Allow-list, matched case-insensitively. When set, only these tools are offered, so a tool added by a later server version stays hidden until listed. Omitted offers every tool; an empty array offers none. This is what keeps a third-party server read-only |
+| `PathRoot` | The one folder the server may touch. When set, `PathGuard` checks every path-like argument before the call runs (see SECURITY.md 3.1), and the server is rejected at startup unless this path is also one of `Args`. Omit for servers that take no paths |
 | `ExcludeTools` | Tool names withheld from the model, matched case-insensitively and applied after `IncludeTools`. Used to trim overlapping tools and ones the model misuses |
 
 Adding a server is a new entry here, not a code change. If the server is third-party and any of its tools can write, set `IncludeTools` to the read-only ones; do not rely on `ExcludeTools` alone.
@@ -45,7 +46,7 @@ Relative paths in `Args` resolve against the API's working directory; see [RUNBO
 ## 4. Process lifecycle (current)
 
 1. `McpToolRegistry.StartAsync` runs at host start. For each configured server, in order, it creates a `StdioClientTransport`, connects, and calls `tools/list`. Connect and list share a 30 second timeout per server.
-2. `IncludeTools` (if set) and then `ExcludeTools` are applied; the remaining tools are stored per server name.
+2. Fail-closed checks (`McpServerVerifier`): before launch, `PathRoot` must be one of the arguments; after listing, every `IncludeTools` entry must be offered and none may declare itself non-read-only or destructive. A failed check rejects the server: it is disposed and none of its tools are used. Tools offered but not allow-listed are logged as withheld. Then `IncludeTools` (if set) and `ExcludeTools` are applied; the remaining tools are stored per server name.
 3. On each agent run, `RegisterAsync` adds each server's tools to the run's kernel as a plugin (skipping a plugin that is already present).
 4. On shutdown `DisposeAsync` disposes every client, which ends the child processes.
 
@@ -69,6 +70,7 @@ Every model-requested call passes `ToolCallValidator` before it reaches a server
 | 1 | Tool name exists in the kernel | `Unknown tool '<plugin_function>'. Valid tools: ...` |
 | 2 | Arguments parsed as JSON | `Arguments for '<tool>' are not valid JSON: ...` |
 | 3 | Arguments satisfy the tool's JSON Schema (`additionalProperties: false`, `required` honoured) | `Invalid arguments for '<tool>': <location>: <reason>; ...` |
+| 3a | Server-specific argument check (`IToolRegistry.CheckCall`): for a server with `PathRoot`, path arguments must be absolute, free of `..`, not UNC/device/stream paths, and resolve inside the root | `Argument '<name>' was blocked: <reason>` |
 | 4 | Repeat limit: same tool and same arguments more than `MaxIdenticalCalls` times in one run | `You already made this exact call and received its result. Use that result, or try different arguments, or answer now.` |
 
 The schema comes from the server's own tool definition, so there is nothing to maintain on our side when a server's tools change.
@@ -116,7 +118,7 @@ The statement filter exists to give clear errors; the guarantee itself is the re
 
 ## 7. Filesystem server (off the shelf)
 
-`@modelcontextprotocol/server-filesystem` is launched through `npx -y` with one allow-listed root as its argument. Path and traversal enforcement is that server's job. We keep it safe by allow-listing its read-only tools in `IncludeTools` and by keeping `Indexing:Root` equal to the allow-listed root (by hand; they are not linked). The first launch may download the package, so it needs network once.
+`@modelcontextprotocol/server-filesystem` is launched with one allow-listed root as its argument. Path and traversal enforcement is that server's job, and our `PathGuard` checks the same thing independently. It is installed from `mcp/filesystem/` at a pinned version with a committed lockfile (`npm ci` there once; nothing is downloaded at startup) and launched with `node`. We keep it safe by allow-listing its read-only tools in `IncludeTools`, guarding its paths with `PathRoot`, and by keeping `Indexing:Root` equal to the allow-listed root (by hand; they are not linked). `npm ci` needs network once, at setup.
 
 The opt-in integration test (`ASSISTANT_MCP_INTEGRATION=1`, needs Node and network) starts the real server and checks both properties.
 

@@ -74,7 +74,7 @@ The model sees six tools. Fewer, non-overlapping tools are easier for a 7B model
 | filesystem | `list_allowed_directories`, `list_directory`, `search_files`, `read_text_file` | `write_file`, `edit_file`, `create_directory`, `move_file` (writes); `get_file_info`, `list_directory_with_sizes`, `directory_tree` (duplicate the index); `read_file` (deprecated alias), `read_media_file` (not for a text model); `read_multiple_files` (the model passes its `paths` as a string, see section 7) |
 | sqlite | `describe_schema`, `query` | none |
 
-Tool names reach the model as `plugin_function` (for example `sqlite_query`, `filesystem_read_text_file`). UI events carry `plugin-function`.
+Tool names reach the model as `plugin_function` (for example `sqlite_query`, `filesystem_read_text_file`). UI events carry the same text in practice (see API-CONTRACT.md).
 
 ## 4. Tool-call schemas
 

@@ -26,7 +26,7 @@ A single-agent assistant that answers questions about local files and metadata. 
 - .NET SDK 10 (the project targets `net10.0`; the machine has no ASP.NET Core 9 runtime)
 - Node.js 20+ and npm
 - [Ollama](https://ollama.com) with `ollama pull qwen2.5:7b-instruct`
-- Node.js on PATH for launching the stdio MCP servers (`npx`)
+- Node.js on PATH for the filesystem MCP server; run `npm ci` in `mcp/filesystem` once
 
 ## Run locally
 

@@ -9,7 +9,7 @@
 | Ollama | `scripts/ollama-start.ps1` (or `ollama serve`) | `127.0.0.1:11434` | `scripts/ollama-stop.ps1` |
 | `Assistant.Api` | `dotnet run` | `localhost:5080` | Ctrl+C |
 | `Assistant.SqliteMcp` | API, as a child (`dotnet Assistant.SqliteMcp.dll`) | stdio | Ends with the API |
-| Filesystem MCP server | API, as a child via `npx` (Node) | stdio | Ends with the API |
+| Filesystem MCP server | API, as a child via `node` (pinned install in `mcp/filesystem`) | stdio | Ends with the API |
 | Vite dev server | `npm run dev` in `web/` | `localhost:5173` | Ctrl+C |
 
 If the API is killed instead of stopped cleanly, its children can be left running (section 5).
@@ -43,7 +43,9 @@ dotnet run --no-launch-profile --urls http://localhost:5080
 
 **Run from `src/Assistant.Api`.** The relative paths in `appsettings.json` (`../../sample-docs`, `../../data/assistant.db`) assume that working directory. From the repo root, `dotnet run --project src/Assistant.Api` resolves them one level too high, which silently indexes and serves the wrong folder or creates the database in the wrong place.
 
-On start the API launches both MCP servers (first run of the filesystem server downloads it through `npx`, so allow time and network) and starts the indexer. Look for these log lines:
+**One-time setup:** the filesystem server is a pinned install, not a download at startup. Run `npm ci` in `mcp/filesystem` once after cloning (needs Node and network). Without it the filesystem server fails to start and the app runs without file tools.
+
+On start the API launches both MCP servers and starts the indexer. Look for these log lines:
 
 ```
 MCP server filesystem ready with tools: list_allowed_directories, list_directory, ...
@@ -124,6 +126,11 @@ Messages worth knowing:
 | Log message | Meaning |
 |---|---|
 | `MCP server {Server} ready with tools: ...` | Server started; the list is what the model can use after `ExcludeTools` |
+| `MCP server '{Server}' was rejected: ... Its tools are unavailable.` | A fail-closed check failed (an allow-listed tool is missing, a tool declares itself writing or destructive, or `PathRoot` is not a launch argument). Nothing from that server is used. Review the server version and `IncludeTools`; see SECURITY.md 3.1 |
+| `MCP server {Server} offers tools that are not allow-listed and stay withheld: ...` | Expected. A new name here after an upgrade means the server added tools; review them before ever allow-listing |
+| `Run {id}: blocked tool call {Tool}: ...` | `PathGuard` refused a path (outside the root, relative, `..`, UNC, stream, or unverifiable). The text is what the model was told. Repeated blocks usually mean the model is guessing paths |
+| `Run {id}: argument check for tool {Tool} failed; the call was blocked` | The guard itself threw; the call was blocked (fail closed). The exception is in the log line |
+| `MCP server {Server} did not become ready within 30s` | Startup timeout; the server is skipped |
 | `MCP server {Server} failed to start; its tools are unavailable` | Server failed or exceeded the 30 second startup timeout. The app runs without those tools; see 7.3 |
 | `Iteration {n}: tool {Tool} ok` or `failed` | One tool call per line, with outcome |
 | `Rejected tool call: ...` | `ToolCallValidator` caught a bad name, JSON or arguments; the text is what the model was told |
@@ -156,7 +163,8 @@ Most likely the model call failed: Ollama is not running, the URL is wrong, or t
 ### 7.3 A tool is missing, or "Unknown tool" errors
 
 - Compare the `MCP server ... ready with tools` log lines against what you expect. A failed server logs the error with its exception.
-- **filesystem fails to start:** Node and `npx` must be on `PATH`; the first launch needs network to fetch the package. Run `npx -y @modelcontextprotocol/server-filesystem ../../sample-docs` by hand from `src/Assistant.Api` to see its error.
+- **filesystem fails to start:** Node must be on `PATH` and `npm ci` must have been run in `mcp/filesystem`. Run `node ../../mcp/filesystem/node_modules/@modelcontextprotocol/server-filesystem/dist/index.js ../../sample-docs` by hand from `src/Assistant.Api` to see its error.
+- **filesystem is rejected:** see the `was rejected` log line. After a version change, an allow-listed tool may have been renamed or removed.
 - **sqlite fails to start:** `Assistant.SqliteMcp.dll` must sit beside the API. Rebuild with `dotnet build`. Running it by hand (`dotnet Assistant.SqliteMcp.dll <db>`) with no argument prints usage and exits 2.
 - A server that **died after startup** is not restarted; tool calls return errors until the API restarts (watchdog is planned).
 - "Unknown tool" in a tool result means the model invented or mis-spelled a name. The result lists the valid names; if it happens repeatedly the model is struggling and the prompt or tool set may need work.

@@ -25,20 +25,38 @@ Never relax a read-only guarantee to make a feature easier. Any change touching 
 
 The filesystem server's tools are gated by an allow-list, `IncludeTools` in `appsettings.json`: only `read_text_file`, `list_directory`, `search_files` and `list_allowed_directories` are offered. Every other tool, write-capable or not, is never advertised, and a call to one is rejected as an unknown tool by `ToolCallValidator` before it reaches the server. `ExcludeTools` is applied on top to trim read tools the model misuses (list in [PROMPT-SPEC.md](PROMPT-SPEC.md) section 3).
 
-History: the gate used to be a deny-list only. A newer server version added `append_file` and `copy_file`, which are write tools and were exposed to the model until the allow-list replaced it (found 2026-11-17 in the startup log). A tool added by a later version now stays hidden until someone lists it. `McpConfigTests` pins the shipped list, and the opt-in integration test (`ASSISTANT_MCP_INTEGRATION=1`) asserts the real server offers exactly the four read-only tools; run it when upgrading that package. The package is launched unpinned through `npx -y`, so the version can still change under us.
+History: the gate used to be a deny-list only. A newer server version added `append_file` and `copy_file`, which are write tools and were exposed to the model until the allow-list replaced it (found 2026-11-17 in the startup log). A tool added by a later version now stays hidden until someone lists it.
+
+Layers, from the outside in. Each is independent, so a write needs all of them to fail at once:
+
+| Layer | What it does | Where |
+|---|---|---|
+| 1. Pinned install | The filesystem server is launched from `mcp/filesystem/` as an exact version (`package.json`) with a committed `package-lock.json` holding integrity hashes, installed with `npm ci`. It is no longer fetched with `npx -y` at startup, so the code that runs cannot change without a reviewed commit | `mcp/filesystem/`, `appsettings.json` |
+| 2. Fail-closed startup check | After listing a server's tools, `McpServerVerifier` rejects the whole server (it is disposed, none of its tools are used) if an allow-listed tool is missing, if one declares `readOnlyHint: false` or `destructiveHint: true`, or if `PathRoot` is not one of the server's launch arguments. Tools that are offered but not allow-listed are logged as withheld, so drift is visible | `McpServerVerifier`, `McpToolRegistry.StartAsync` |
+| 3. Allow-list | `IncludeTools` filters what the model can see, then `ExcludeTools` trims further | `McpToolRegistry.Filter` |
+| 4. Validator | An unknown tool name, malformed JSON or schema-invalid arguments never reach the server | `ToolCallValidator` |
+| 5. Path guard | Our own check of every path-like argument (`path`, `paths`, `source`, `destination`, `directory`, `file`) before the call runs: absolute paths only (the server would resolve a relative one against its own working directory), no `..`, no UNC or device paths, no `:` after the drive letter (alternate data streams), and the path must resolve inside `PathRoot` with symlinks and junctions followed component by component. Glob arguments (`pattern`, `excludePatterns`) may not be rooted or contain `..`. Anything it cannot verify is refused | `PathGuard`, `IToolRegistry.CheckCall` |
+| 6. The server's own checks | `@modelcontextprotocol/server-filesystem` enforces its allowed directory too | third party |
+| 7. Operating system | See 3.7 (optional, recommended) | deployment |
+
+The guard is keyed on the function the kernel resolved, not on the call's plugin name: the Ollama connector sends `plugin_function` names that arrive with an empty plugin name. An earlier version keyed on the call and would have been skipped in production; a live run caught it, and `ReadOnlyEnforcementTests` now uses the real name shape. A guard that throws blocks the call (fail closed) and the exception goes to the log, not to the model.
+
+Tests: `PathGuardTests` (traversal, UNC, streams, links via an injected resolver and a real junction), `McpServerVerifierTests`, `McpToolRegistryTests` (rejection, timeout, cancellation), `ReActLoopTests` (blocked and throwing guard), and `ReadOnlyEnforcementTests`, which drives a scripted model through the real stack and compares every file byte for byte afterwards: SQL write attempts always, and, with `ASSISTANT_MCP_INTEGRATION=1`, the real pinned filesystem server against traversal, UNC, stream, link, and every write tool name.
+
+Upgrading the server: change the version in `mcp/filesystem/package.json`, run `npm install --ignore-scripts` there, review the new tool list in the startup log, update `IncludeTools` only for tools that are read-only, run the integration test, and commit `package.json` and `package-lock.json` together.
 
 ### 3.2 Filesystem root
 
 | Property | How it is enforced |
 |---|---|
-| Reads limited to one root | `@modelcontextprotocol/server-filesystem` is launched with a single allow-listed directory (`../../sample-docs`). Path and traversal checks (`..`, absolute paths elsewhere, symlinks) are that server's job, not ours |
+| Reads limited to one root | `@modelcontextprotocol/server-filesystem` is launched with a single allow-listed directory (`../../sample-docs`), and our `PathGuard` independently refuses any path outside it (`PathRoot`, which must be one of the launch arguments or the server is rejected at startup). Both must agree for a call to succeed |
 | Root consistency | `Indexing:Root` must equal the allow-listed root. They are separate settings and are kept equal by hand |
 | Indexer stays inside the root | `FileIndexer` skips reparse points (symlinks, junctions), so a link inside the root cannot lead the scan outside it |
 | Database not readable as a document | The database lives in `data/`, outside the default root, so the filesystem tools cannot open it. If you ever widen the root to include `data/`, the model could read the raw file |
 
 **Allowed and restricted paths.** Allowed: everything under the configured root, read-only. Restricted: everything else. We maintain no deny list of system paths; the allow-list is the control. Choose the root accordingly: do not point it at a home directory, a profile folder, or a directory containing secrets, keys or `.env` files, because anything under it is readable by the model and shown in the UI.
 
-Gap: the package is launched with `npx -y @modelcontextprotocol/server-filesystem` with no version pin, so each fresh install resolves the latest release. That is a supply-chain exposure for code that runs with the user's privileges *(planned: pin a version)*.
+Resolved: the package used to be launched with `npx -y` and no version pin, so each fresh install resolved the latest release, a supply-chain exposure for code that runs with the user's privileges. It is now a pinned install with a lockfile (3.1, layer 1).
 
 ### 3.3 SQLite
 
@@ -67,7 +85,28 @@ Tool output is truncated to `Agent:MaxToolResultChars`, and SQL results are row-
 | CORS | `http://localhost:5173` only |
 | Host header filtering | `AllowedHosts: "*"`. Acceptable on loopback; tighten before exposing the API anywhere else |
 | Authentication | None. Anyone able to reach the port can run the agent. Do not expose the port |
-| Outbound | None from our code. Ollama is local. The only network use is `npx` fetching the filesystem server on first launch |
+| Outbound | None from our code. Ollama is local. The only network use is `npm ci` fetching the pinned filesystem server once, at setup |
+
+### 3.7 Operating-system read-only (recommended, not automated)
+
+Everything above stops the model from asking for a write. This last layer stops the *process* from performing one even if every layer above failed or the third-party server were compromised. It is a deployment step, not code, so it is not enforced by the app or the tests.
+
+- **Best:** run the API (and so its MCP children) as a separate low-privilege account that has read-only access to the root and no write access to it. The account that edits your documents is then a different one.
+- **Windows, same account:** deny writes on the root for the account running the API. This also blocks you editing those files with that account, so use it only if documents are managed by another account or you lift it temporarily.
+
+  ```powershell
+  icacls "C:\path\to\sample-docs" /deny "$($env:USERNAME):(OI)(CI)(WD,AD,D,DC)"   # deny write/append/delete
+  icacls "C:\path\to\sample-docs" /remove:d "$($env:USERNAME)"                    # lift it again
+  ```
+
+- **Linux/macOS:** `chmod -R a-w <root>` for the service user, or mount the folder read-only.
+- Keep the database out of that rule: the indexer writes `data/assistant.db`, which is deliberately outside the root.
+
+Not covered by any layer: the server can still read everything under the root (by design), and a server compromised at install time would run with the API's permissions. The lockfile integrity hashes defend the second case against a changed package, not against a package that was malicious when first pinned.
+
+### 3.8 Not built yet: our own read-only filesystem server
+
+The one control that removes the write code instead of hiding it is replacing the third-party filesystem server with a small read-only server of our own, like `Assistant.SqliteMcp`. It would contain no write code at all, so "cannot write" would hold by construction instead of by configuration. Tracked in [ROADMAP.md](ROADMAP.md) as 6.8. Until then layers 1 to 7 above apply.
 
 ## 4. Prompt injection
 
@@ -98,7 +137,7 @@ Residual risk: an injected document can mislead the answer or make the model rea
 Before merging a change that touches tools, the SQLite engine, the indexer or the root configuration:
 
 - [ ] A test proves a write attempt still fails and the target is unchanged.
-- [ ] New third-party MCP server: `IncludeTools` lists only the read-only tools, and the tool set was reviewed.
+- [ ] New third-party MCP server: pinned version with a lockfile, `IncludeTools` lists only the read-only tools, `PathRoot` set if it takes paths, the withheld-tools log line reviewed, and an adversarial test added to `ReadOnlyEnforcementTests`.
 - [ ] `Indexing:Root` still equals the filesystem server's allow-listed root.
 - [ ] The root does not include `data/`, secrets, or profile directories.
 - [ ] Live check against the real model if the prompt or tool set changed ([RUNBOOK.md](RUNBOOK.md) section 4).
